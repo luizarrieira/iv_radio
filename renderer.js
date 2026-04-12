@@ -7,35 +7,42 @@ const WEATHER_LIMITS = window.GERAL_DATA ? window.GERAL_DATA.weatherLimits : { c
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioContextClass();
 
-// ==== INÍCIO DO DESBLOQUEADOR PARA IPHONE / IOS ====
+// ==== INÍCIO DO DESBLOQUEADOR SUPREMO PARA IOS ====
 let iosUnlocked = false;
+// Um ficheiro de áudio real (.wav) de 1 milissegundo, mudo, em formato texto!
+const silentWAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+
 function unlockAudioForiOS() {
     if (iosUnlocked) return;
     
-    // Resume o contexto imediatamente no clique
+    // 1. Acorda o Motor Principal (Vozes, FX)
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
-
-    // Cria um som vazio de 1 milissegundo e toca-o. 
-    // O iOS vê isto e pensa: "Ok, o humano clicou e tocou um som, vou desbloquear o rádio!"
     const buffer = audioCtx.createBuffer(1, 1, 22050);
     const node = audioCtx.createBufferSource();
     node.buffer = buffer;
     node.connect(audioCtx.destination);
     node.start(0);
 
-    // Tenta também desbloquear a tag de HTML5 (usada para os Streams e Talk Radios)
-    streamAudioElement.play().then(() => {
-        streamAudioElement.pause();
-    }).catch(e => {});
+    // 2. "Batiza" o Elemento de Áudio HTML5 (Talk Radios, Mixes)
+    // Se não fizermos isto, a rádio de Música funciona, mas os Streams ficam mudos!
+    const playPromise = streamAudioElement.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(() => {
+            // Força o carregamento do áudio invisível
+            streamAudioElement.src = silentWAV;
+            streamAudioElement.play().then(() => {
+                streamAudioElement.pause();
+                streamAudioElement.currentTime = 0;
+            }).catch(e => log('iOS teima em bloquear o stream:', e));
+        });
+    }
 
     iosUnlocked = true;
-    
-    // Removemos os eventos para não sobrecarregar o telemóvel depois do primeiro toque
     document.removeEventListener('touchstart', unlockAudioForiOS);
     document.removeEventListener('click', unlockAudioForiOS);
-    log("🍏 Áudio do iOS Desbloqueado com Sucesso!");
+    log("🍏 Áudio do iOS BATIZADO e Desbloqueado!");
 }
 
 document.addEventListener('touchstart', unlockAudioForiOS, { once: true });
@@ -418,6 +425,9 @@ async function radioLoop(mySession) {
 
 // ==== CONTROLO DE ESTADO GLOBAL ====
 async function startRadio(expansionKey, radioKey){
+    // NOVA LINHA: Força o desbloqueio no momento exato do clique!
+    unlockAudioForiOS();
+
     if(started && activeExpansionKey === expansionKey && activeRadioKey === radioKey) return;
     
     stopRadio(); 
