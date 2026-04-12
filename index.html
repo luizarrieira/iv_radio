@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IV Radio</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600&display=swap');
+    
+    body {
+      margin: 0;
+      background: #000000;
+      color: #eee;
+      font-family: 'Orbitron', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      user-select: none;
+      overflow: hidden;
+    }
+    
+    /* === SISTEMA DE TELAS === */
+    .view {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      animation: fadeIn 0.5s ease;
+    }
+    .view.active { display: flex; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* === MENU INICIAL (EXPANSÕES) === */
+    #menuTitle {
+      font-size: 2rem;
+      color: #ffaa00;
+      margin-bottom: 40px;
+      text-shadow: 0 0 10px rgba(255,170,0,0.5);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .menu-row { display: flex; gap: 20px; margin-bottom: 20px; }
+    .btn-exp {
+      background: #222; color: #fff; border: 2px solid #555;
+      padding: 20px 40px; font-size: 1.2rem; font-family: inherit;
+      cursor: pointer; border-radius: 8px; transition: all 0.3s;
+      min-width: 250px; text-align: center; text-transform: uppercase;
+    }
+    .btn-exp:hover {
+      background: #ffaa00; color: #000; border-color: #ffaa00;
+      transform: scale(1.05); box-shadow: 0 0 15px rgba(255,170,0,0.6);
+    }
+
+    /* === TELA DO PLAYER (ÁREA INTERATIVA) === */
+    #viewPlayer {
+      cursor: grab;
+      position: relative;
+    }
+    #viewPlayer:active { cursor: grabbing; }
+
+    #radioHeader {
+      position: absolute;
+      top: 40px;
+      display: flex;
+      justify-content: flex-start;
+      align-items: center;
+      width: 90%;
+      max-width: 1000px;
+      z-index: 30;
+      pointer-events: auto;
+    }
+    #btnBack {
+      background: transparent; color: #aaa; border: 1px solid #aaa;
+      padding: 8px 16px; font-family: inherit; cursor: pointer;
+      border-radius: 4px; transition: 0.3s;
+    }
+    #btnBack:hover { background: #333; color: #fff; border-color: #fff; }
+
+    /* === LAYOUT CENTRAL (CAPA + NOME + CARROSSEL) === */
+    #playerCenterGroup {
+      display: flex;
+      flex-direction: column;
+      align-items: center; 
+      width: 100%;
+      z-index: 20;
+    }
+
+    #coverAndTitle {
+      display: flex;
+      flex-direction: column; 
+      align-items: flex-start; 
+      gap: 15px; 
+      margin-bottom: 50px; 
+      width: 100%;
+      max-width: 382px; 
+    }
+
+    #activeColorLogo {
+      width: 256px;
+      height: 128px;
+      object-fit: contain;
+      opacity: 0;
+      transform: scale(0.95);
+      pointer-events: none; 
+      -webkit-user-drag: none;
+    }
+    #activeColorLogo.visible {
+      opacity: 1;
+      transform: scale(1);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    #radioNameText {
+      font-size: 1.1rem;
+      white-space: nowrap;
+      color: #ffaa00;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 10px rgba(255,170,0,0.4);
+      padding-bottom: 0; 
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    #radioNameText.visible {
+      opacity: 1;
+      transform: translateX(0);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    #radioNameText.fade-out {
+      opacity: 0 !important;
+      transition: opacity 1s ease; 
+    }
+
+    /* === CARROSSEL DAS RÁDIOS (Preto e Branco) === */
+    #carouselContainer {
+      position: relative;
+      width: 100%;
+      height: 100px; 
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 1s ease;
+      opacity: 1;
+      -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 20%, black 80%, transparent 100%);
+      mask-image: linear-gradient(90deg, transparent 0%, black 20%, black 80%, transparent 100%);
+    }
+    
+    #carouselContainer.hidden-carousel {
+      opacity: 0;
+    }
+
+    .radio-card {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 128px;
+      height: 64px;
+      margin-left: -64px;
+      margin-top: -32px;  
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    
+    .radio-card img {
+      width: 128px;
+      height: 64px;
+      object-fit: contain;
+      -webkit-user-drag: none;
+    }
+
+    /* === ÁREA DE LOGS === */
+    #logArea {
+      position: absolute;
+      bottom: 20px;
+      width: 90%; max-width: 600px; height: 120px;
+      background: #111; border: 1px solid #333; padding: 10px;
+      font-family: monospace; font-size: 0.8rem; color: #0f0;
+      overflow-y: auto; border-radius: 8px; box-sizing: border-box;
+      pointer-events: auto; 
+    }
+    #logArea div { border-bottom: 1px solid #222; padding: 2px 0; }
+  </style>
+</head>
+<body>
+
+  <div id="viewMenu" class="view active">
+    <div id="menuTitle">Selecione a Programação</div>
+    <div class="menu-row">
+      <button class="btn-exp" data-exp="iv">IV</button>
+      <button class="btn-exp" data-exp="eflc">EFLC</button>
+    </div>
+    <div class="menu-row">
+      <button class="btn-exp" data-exp="complete">Complete Edition</button>
+    </div>
+  </div>
+
+  <div id="viewPlayer" class="view">
+    <div id="radioHeader">
+      <button id="btnBack">⬅ Voltar</button>
+    </div>
+
+    <div id="playerCenterGroup">
+      <div id="coverAndTitle">
+        <img id="activeColorLogo" src="capas/default.png" draggable="false" />
+        <div id="radioNameText"></div>
+      </div>
+      
+      <div id="carouselContainer"></div>
+    </div>
+
+    <div id="logArea"></div>
+  </div>
+
+  <script src="geral.js"></script>
+  <script src="station.js"></script>
+  <script src="renderer.js"></script>
+  
+  <script>
+    // ----------------- SISTEMA DE LOGS -----------------
+    const logArea = document.getElementById('logArea');
+    const oldLog = console.log;
+    console.log = (...args) => {
+      oldLog(...args);
+      const line = document.createElement('div');
+      line.textContent = args.join(' ');
+      logArea.appendChild(line);
+      logArea.scrollTop = logArea.scrollHeight;
+    };
+
+    // ----------------- CONFIGURAÇÃO DAS RÁDIOS -----------------
+    const todasAsRadios = [
+      { key: 'radio_afro_beat', name: 'International Funk 99', imgBW: 'capas/if99_bw.png', imgCol: 'capas/if99_col.png', expansoes: ['iv', 'complete'] },
+      { key: 'radio_babylon', name: 'Tuff Gong Radio', imgBW: 'capas/tuffgong_bw.png', imgCol: 'capas/tuffgong_col.png', expansoes: ['iv', 'complete'] },
+      { key: 'radio_the_vibe', name: 'The Vibe 98.8', imgBW: 'capas/thevibe_bw.png', imgCol: 'capas/thevibe_col.png', expansoes: ['iv', 'complete'] },
+      { key: 'radio_liberty_rock', name: 'Liberty Rock Radio 97.8', imgBW: 'capas/lrr_bw.png', imgCol: 'capas/lrr_col.png', expansoes: ['iv', 'eflc', 'complete'] },
+      { key: 'radio_jazz_nation', name: 'Jazz Nation Radio 108.5', imgBW: 'capas/jnr_bw.png', imgCol: 'capas/jnr_col.png', expansoes: ['iv', 'complete'] },
+      { key: 'radio_bobby_konders', name: 'Massive B Soundsystem 96.9', imgBW: 'capas/massiveb_bw.png', imgCol: 'capas/massiveb_col.png', expansoes: ['iv', 'complete'] },
+      { key: 'radio_meditation', name: 'Self Actualization FM', imgBW: 'capas/selfactualizationfm_bw.png', imgCol: 'capas/selfactualizationfm_col.png', expansoes: ['eflc', 'complete'] },
+      { key: 'radio_k109_the_studio', name: 'K109 The Studio', imgBW: 'capas/k109_bw.png', imgCol: 'capas/k109_col.png', expansoes: ['iv', 'eflc', 'complete'] },
+      { key: 'radio_vcfm', name: 'Vice City FM', imgBW: 'capas/vicecityfm_bw.png', imgCol: 'capas/vicecityfm_col.png', expansoes: ['eflc', 'complete'] },
+      { key: 'radio_wktt', name: 'We Know The Truth', imgBW: 'capas/wktt_bw.png', imgCol: 'capas/wktt_col.png', expansoes: ['iv', 'eflc', 'complete'] },
+      { key: 'radio_hardcore', name: 'Liberty City Hardcore', imgBW: 'capas/lchc_bw.png', imgCol: 'capas/lchc_col.png', expansoes: ['iv', 'eflc', 'complete'] },
+      { key: 'radio_classical_ambient', name: 'The Journey', imgBW: 'capas/thejourney_bw.png', imgCol: 'capas/thejourney_col.png', expansoes: ['iv', 'complete'] },
+      { key: 'radio_fusion_fm', name: 'Fusion FM', imgBW: 'capas/fusion_bw.png', imgCol: 'capas/fusion_col.png', expansoes: ['iv', 'complete'] },
+      { key: 'radio_beat_95', name: 'The Beat 102.7', imgBW: 'capas/beat_bw.png', imgCol: 'capas/beat_col.png', expansoes: ['iv', 'eflc', 'complete'] },
+      { key: 'radio_ramjamfm', name: 'Ram Jam FM', imgBW: 'capas/ramjamfm_bw.png', imgCol: 'capas/ramjamfm_col.png', expansoes: ['eflc', 'complete'] },
+      { key: 'radio_dance_rock', name: 'Radio Broker', imgBW: 'capas/radiobroker_bw.png', imgCol: 'capas/radiobroker_col.png', expansoes: ['iv', 'eflc', 'complete'] },
+      { key: 'radio_vladivostok', name: 'Vladivostok FM', imgBW: 'capas/vladivostok_bw.png', imgCol: 'capas/vladivostok_col.png', expansoes: ['iv', 'eflc', 'complete'] },
+      { key: 'radio_plr', name: 'Public Liberty Radio', imgBW: 'capas/plr_bw.png', imgCol: 'capas/plr_col.png', expansoes: ['iv', 'complete'] },
+      { key: 'radio_san_juan_sounds', name: 'San Juan Sounds', imgBW: 'capas/sanjuan_bw.png', imgCol: 'capas/sanjuan_col.png', expansoes: ['iv', 'eflc', 'complete'] },
+      { key: 'radio_dance_mix', name: 'Electro Choc', imgBW: 'capas/electrochoc_bw.png', imgCol: 'capas/electrochoc_col.png', expansoes: ['iv', 'eflc', 'complete'] },
+      { key: 'radio_ny_classics', name: 'The Classics 104.1', imgBW: 'capas/theclassics_bw.png', imgCol: 'capas/theclassics_col.png', expansoes: ['iv', 'complete'] },
+      { 
+        key: 'radio_lazlow', 
+        name: 'Integrity 2.0', 
+        imgBW: 'capas/integrity_bw.png', 
+        imgCol: 'capas/integrity_col.png', 
+        expansoes: ['iv', 'eflc', 'complete'],
+        isAvailable: function(exp, day) {
+            if (exp === 'eflc') return true; 
+            return day >= 8; 
+        }
+      }
+    ];
+
+    // ----------------- ESTADO GLOBAL -----------------
+    let currentExpansion = null;
+    let radiosAtuais = [];
+    let currentIndex = 0; 
+    let playTimeout = null;
+    let carouselIdleTimeout = null;
+
+    const viewMenu = document.getElementById('viewMenu');
+    const viewPlayer = document.getElementById('viewPlayer');
+    const carouselContainer = document.getElementById('carouselContainer');
+    const activeColorLogo = document.getElementById('activeColorLogo');
+    const radioNameText = document.getElementById('radioNameText');
+
+    // ----------------- VISIBILIDADE DO CARROSSEL -----------------
+    function wakeUpCarousel() {
+      carouselContainer.classList.remove('hidden-carousel');
+      radioNameText.classList.remove('fade-out'); 
+      
+      clearTimeout(carouselIdleTimeout);
+      carouselIdleTimeout = setTimeout(() => {
+        carouselContainer.classList.add('hidden-carousel');
+        radioNameText.classList.add('fade-out'); 
+      }, 5000); 
+    }
+
+    // ----------------- RENDERIZAR CARROSSEL -----------------
+    function buildCarousel() {
+      const day = new Date().getDate(); 
+
+      radiosAtuais = todasAsRadios.filter(r => {
+          const validExpansion = r.expansoes.includes(currentExpansion);
+          const validDate = r.isAvailable ? r.isAvailable(currentExpansion, day) : true;
+          return validExpansion && validDate;
+      });
+      
+      carouselContainer.innerHTML = '';
+      radiosAtuais.forEach((r, index) => {
+        const div = document.createElement('div');
+        div.className = 'radio-card';
+        div.id = `card_${index}`;
+        
+        let imgSrcBw = r.imgBW;
+        if (currentExpansion === 'eflc') {
+            if (r.key === 'radio_beat_95') imgSrcBw = 'capas/beat_bw2.png';
+            else if (r.key === 'radio_dance_rock') imgSrcBw = 'capas/radiobroker_bw2.png';
+            else if (r.key === 'radio_hardcore') imgSrcBw = 'capas/lchc_bw2.png';
+            else if (r.key === 'radio_liberty_rock') imgSrcBw = 'capas/lrr_bw2.png';
+        }
+
+        div.innerHTML = `<img src="${imgSrcBw}" draggable="false" onerror="this.src='capas/default.png'" />`;
+        carouselContainer.appendChild(div);
+      });
+    }
+
+    // ----------------- LÓGICA DE LOOP & VISUAL -----------------
+    function updateCarousel() {
+      wakeUpCarousel(); 
+
+      const N = radiosAtuais.length;
+      if(N === 0) return;
+      
+      const activeIdx = ((currentIndex % N) + N) % N;
+
+      activeColorLogo.classList.remove('visible');
+      radioNameText.classList.remove('visible');
+
+      document.querySelectorAll('.radio-card').forEach((el, i) => {
+        let diff = i - activeIdx;
+        if (diff > Math.floor(N/2)) diff -= N;
+        if (diff < -Math.floor(N/2)) diff += N;
+
+        const oldDiff = el.dataset.diff !== undefined ? parseInt(el.dataset.diff) : diff;
+        el.dataset.diff = diff;
+        
+        if (Math.abs(oldDiff - diff) > 1) el.style.transition = 'none'; 
+        else el.style.transition = 'transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease';
+
+        setTimeout(() => {
+            if (diff === 0) {
+              el.style.transform = 'translate(0px, 0px) scale(1)';
+              el.style.opacity = '1';
+              el.style.zIndex = '5';
+            } else if (diff === -1 || (diff < 0 && N === 2)) {
+              el.style.transform = 'translate(-140px, 0px) scale(0.8)';
+              el.style.opacity = '0.5';
+              el.style.zIndex = '3';
+            } else if (diff === 1 || (diff > 0 && N === 2)) {
+              el.style.transform = 'translate(140px, 0px) scale(0.8)';
+              el.style.opacity = '0.5';
+              el.style.zIndex = '3';
+            } else {
+              el.style.transform = `translate(${diff > 0 ? 300 : -300}px, 0px) scale(0.5)`;
+              el.style.opacity = '0';
+              el.style.zIndex = '1';
+            }
+        }, 0);
+      });
+
+      if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
+
+      clearTimeout(playTimeout);
+      playTimeout = setTimeout(() => {
+        const rad = radiosAtuais[activeIdx];
+        activeColorLogo.src = rad.imgCol;
+        radioNameText.textContent = rad.name;
+        
+        activeColorLogo.classList.add('visible');
+        radioNameText.classList.add('visible');
+        
+        if(window.__RADIO && window.__RADIO.startRadio) {
+          window.__RADIO.startRadio(currentExpansion, rad.key);
+        }
+      }, 1000);
+    }
+
+    function goNext() { currentIndex++; updateCarousel(); }
+    function goPrev() { currentIndex--; updateCarousel(); }
+
+    // ----------------- EVENTOS DE INTERAÇÃO -----------------
+    document.querySelectorAll('.btn-exp').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        currentExpansion = e.target.getAttribute('data-exp');
+        
+        viewMenu.classList.remove('active');
+        viewPlayer.classList.add('active');
+        
+        buildCarousel();
+        currentIndex = 0; 
+        updateCarousel(); 
+      });
+    });
+
+    document.getElementById('btnBack').addEventListener('click', (e) => {
+      e.stopPropagation(); 
+      clearTimeout(playTimeout);
+      clearTimeout(carouselIdleTimeout);
+      if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
+      viewPlayer.classList.remove('active');
+      viewMenu.classList.add('active');
+    });
+
+    let lastWheelTime = 0;
+    viewPlayer.addEventListener('wheel', (e) => {
+      if (e.target.closest('#logArea')) return; 
+
+      e.preventDefault(); 
+      const now = Date.now();
+      if (now - lastWheelTime < 250) return; 
+      lastWheelTime = now;
+      if (e.deltaY > 0) goNext(); 
+      else if (e.deltaY < 0) goPrev(); 
+    }, { passive: false });
+
+    let isDragging = false, startX = 0;
+    const dragStart = (e) => { 
+      if (e.target.closest('#logArea') || e.target.closest('#btnBack')) return;
+      isDragging = true; 
+      startX = e.clientX || e.changedTouches[0].clientX; 
+    };
+    const dragEnd = (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      const x = e.clientX || e.changedTouches[0].clientX;
+      const diff = startX - x;
+      if (diff > 50) goNext();
+      else if (diff < -50) goPrev();
+      else wakeUpCarousel(); 
+    };
+
+    viewPlayer.addEventListener('mousedown', dragStart);
+    viewPlayer.addEventListener('mouseup', dragEnd);
+    viewPlayer.addEventListener('mouseleave', (e) => { if(isDragging) dragEnd(e); });
+    
+    viewPlayer.addEventListener('touchstart', dragStart);
+    viewPlayer.addEventListener('touchend', dragEnd);
+
+  </script>
+</body>
+</html>
