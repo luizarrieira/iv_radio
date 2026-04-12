@@ -7,6 +7,41 @@ const WEATHER_LIMITS = window.GERAL_DATA ? window.GERAL_DATA.weatherLimits : { c
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioContextClass();
 
+// ==== INÍCIO DO DESBLOQUEADOR PARA IPHONE / IOS ====
+let iosUnlocked = false;
+function unlockAudioForiOS() {
+    if (iosUnlocked) return;
+    
+    // Resume o contexto imediatamente no clique
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+
+    // Cria um som vazio de 1 milissegundo e toca-o. 
+    // O iOS vê isto e pensa: "Ok, o humano clicou e tocou um som, vou desbloquear o rádio!"
+    const buffer = audioCtx.createBuffer(1, 1, 22050);
+    const node = audioCtx.createBufferSource();
+    node.buffer = buffer;
+    node.connect(audioCtx.destination);
+    node.start(0);
+
+    // Tenta também desbloquear a tag de HTML5 (usada para os Streams e Talk Radios)
+    streamAudioElement.play().then(() => {
+        streamAudioElement.pause();
+    }).catch(e => {});
+
+    iosUnlocked = true;
+    
+    // Removemos os eventos para não sobrecarregar o telemóvel depois do primeiro toque
+    document.removeEventListener('touchstart', unlockAudioForiOS);
+    document.removeEventListener('click', unlockAudioForiOS);
+    log("🍏 Áudio do iOS Desbloqueado com Sucesso!");
+}
+
+document.addEventListener('touchstart', unlockAudioForiOS, { once: true });
+document.addEventListener('click', unlockAudioForiOS, { once: true });
+// ==== FIM DO DESBLOQUEADOR ====
+
 const DUCK_TARGET = 0.4;    
 const DUCK_DOWN_TIME = 0.1; 
 const DUCK_UP_TIME = 0.1;   
