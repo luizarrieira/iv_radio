@@ -9,13 +9,12 @@ const audioCtx = new AudioContextClass();
 
 // ==== INÍCIO DO DESBLOQUEADOR SUPREMO PARA IOS ====
 let iosUnlocked = false;
-// Um ficheiro de áudio real (.wav) de 1 milissegundo, mudo, em formato texto!
 const silentWAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
 function unlockAudioForiOS() {
     if (iosUnlocked) return;
     
-    // 1. Acorda o Motor Principal (Vozes, FX)
+    // 1. Acorda o Motor Principal
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
@@ -25,24 +24,14 @@ function unlockAudioForiOS() {
     node.connect(audioCtx.destination);
     node.start(0);
 
-    // 2. "Batiza" o Elemento de Áudio HTML5 (Talk Radios, Mixes)
-    // Se não fizermos isto, a rádio de Música funciona, mas os Streams ficam mudos!
-    const playPromise = streamAudioElement.play();
-    if (playPromise !== undefined) {
-        playPromise.catch(() => {
-            // Força o carregamento do áudio invisível
-            streamAudioElement.src = silentWAV;
-            streamAudioElement.play().then(() => {
-                streamAudioElement.pause();
-                streamAudioElement.currentTime = 0;
-            }).catch(e => log('iOS teima em bloquear o stream:', e));
-        });
-    }
+    // 2. A SUA IDEIA APLICADA: Play limpo sem interrupções!
+    streamAudioElement.src = silentWAV;
+    streamAudioElement.play().catch(e => log('iOS bloqueou o áudio mudo inicial:', e));
 
     iosUnlocked = true;
     document.removeEventListener('touchstart', unlockAudioForiOS);
     document.removeEventListener('click', unlockAudioForiOS);
-    log("🍏 Áudio do iOS BATIZADO e Desbloqueado!");
+    log("🍏 Áudio do iOS BATIZADO e Desbloqueado com sucesso!");
 }
 
 document.addEventListener('touchstart', unlockAudioForiOS, { once: true });
@@ -61,6 +50,10 @@ narrationGain.connect(analyser);
 
 const streamAudioElement = new Audio();
 streamAudioElement.crossOrigin = "anonymous";
+// A SUA IDEIA APLICADA: Ancorar o áudio fisicamente na página
+streamAudioElement.style.display = 'none';
+document.body.appendChild(streamAudioElement);
+
 const streamSource = audioCtx.createMediaElementSource(streamAudioElement);
 streamSource.connect(musicGain); 
 
