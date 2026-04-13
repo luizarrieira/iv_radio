@@ -13,7 +13,7 @@ let iosUnlocked = false;
 function unlockAudioForiOS() {
     if (iosUnlocked) return;
     
-    if (audioCtx.state === 'suspended') {
+    if (audioCtx.state !== 'running') {
         audioCtx.resume();
     }
     const buffer = audioCtx.createBuffer(1, 1, 22050);
@@ -52,8 +52,29 @@ const narrationGain = audioCtx.createGain(); narrationGain.connect(audioCtx.dest
 const analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
 narrationGain.connect(analyser);
 
-// A NOSSA FAIXA MUDA MÁGICA DE 1 BYTE
-const silentWAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+// ==== GERADOR DE SILÊNCIO (Evita fritar o CPU do iPhone) ====
+function gerarSilencio1Segundo() {
+    const sampleRate = 8000, duration = 1, channels = 1, bps = 16;
+    const blockAlign = channels * (bps / 8);
+    const dataSize = sampleRate * duration * blockAlign;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    const writeStr = (pos, str) => { for(let i=0; i<str.length; i++) view.setUint8(pos+i, str.charCodeAt(i)); };
+    
+    writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, 'WAVE'); writeStr(12, 'fmt '); view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); view.setUint16(22, channels, true);
+    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true); view.setUint16(34, bps, true);
+    writeStr(36, 'data'); view.setUint32(40, dataSize, true);
+    
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for(let i=0; i<bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return 'data:audio/wav;base64,' + btoa(binary);
+}
+// Agora o silêncio tem 1 segundo exato e o telemóvel "respira"!
+const silentWAV = gerarSilencio1Segundo();
 
 // O NOSSO STREAM PRINCIPAL (Mixes)
 const streamAudioElement = new Audio();
@@ -292,7 +313,7 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
 
     // ==== DESPERTADOR AGRESSIVO PARA O IOS ====
     // Se o Safari adormeceu o motor enquanto fazíamos o download, acordamos ele à força!
-    if (audioCtx.state === 'suspended') {
+    if (audioCtx.state !== 'running') {
         audioCtx.resume().catch(e => log('Erro ao acordar placa de som:', e));
     }
     
@@ -403,7 +424,7 @@ async function radioLoop(mySession) {
     async function radarTick() {
         if (!started || currentSessionId !== mySession) return;
         
-        if (audioCtx.state === 'suspended') {
+        if (audioCtx.state !== 'running') {
             audioCtx.resume().catch(()=>{});
         }
 
@@ -466,7 +487,7 @@ async function startRadio(expansionKey, radioKey){
     currentSessionId++; 
     const mySession = currentSessionId;
     
-    if(audioCtx.state === 'suspended') await audioCtx.resume();
+    if (audioCtx.state !== 'running') await audioCtx.resume();
     
     radioLoop(mySession).catch(e => {
         console.error("Erro no Loop Mestre:", e);
