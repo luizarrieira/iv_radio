@@ -133,8 +133,21 @@ function unlockAudioForiOS() {
 
 /* =================== Data Loaders =================== */
 async function loadTimeline(expansionKey, radioKey) {
+    let targetExpansion = expansionKey;
+
+    // ==== O ROTEADOR DINÂMICO ====
+    // Vai ler diretamente ao station.js! Se a rádio tiver um "aliasFrom", ele muda a rota.
+    const radioData = window.STATION_DATA.PROGRAMACOES[expansionKey]?.[radioKey];
+    
+    if (radioData && radioData.aliasFrom) {
+        targetExpansion = radioData.aliasFrom;
+        log(`🔀 Roteamento Dinâmico: Puxando ${radioKey} diretamente da expansão ${targetExpansion.toUpperCase()}.`);
+    }
+    // =============================
+
     const fileName = radioKey.replace('radio_', 'prog_') + '.json';
-    const url = `programacoes_mensais/${expansionKey}/${fileName}`;
+    const url = `programacoes_mensais/${targetExpansion}/${fileName}`;
+    
     try {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status} - Não encontrado em: ${url}`);
