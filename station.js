@@ -1049,7 +1049,7 @@
     grupoID: k109List('ID', range(1, 9)), // Usa os mesmos da IV
     grupoDJSolo: k109List('SOLO', range(11, 24)),
     grupoAdv: G.adv.eflc.slice(),
-    grupoWeazelNews: [], // Sem notícias nesta expansão
+    grupoWeazelNews: G.news.eflc,
     musicIntroNarrations: {
         'ALOVERSHOLIDAY': k109List('ALOVERSHOLIDAY', [1]),
         'ANYLOVE': k109List('ANYLOVE', [1, 2]),
@@ -1361,7 +1361,7 @@
     grupoID: vcfmList('ID', range(1, 12)),
     grupoDJSolo: vcfmList('SOLO', range(1, 10)),
     grupoAdv: G.adv.eflc.slice(),
-    grupoWeazelNews: [], // Sem notícias na TLAD
+    grupoWeazelNews: G.news.eflc,
     musicIntroNarrations: {
         'BREAKOUT': vcfmList('BREAKOUT', [1, 2]),
         'BUFFALOSTANCE': vcfmList('BUFFALOSTANCE', [1, 2]),
