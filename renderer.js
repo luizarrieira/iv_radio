@@ -290,6 +290,17 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
     const buf = await getAudioBuffer(pathToPlay, true);
     if (!buf || !started || currentSessionId !== mySession) return;
 
+    // ==== DESPERTADOR AGRESSIVO PARA O IOS ====
+    // Se o Safari adormeceu o motor enquanto fazíamos o download, acordamos ele à força!
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(e => log('Erro ao acordar placa de som:', e));
+    }
+    
+    // Garantia dupla de que o Safari não "encravou" o volume no zero
+    musicGain.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
+    narrationGain.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
+    // ==========================================
+
     // MATEMÁTICA DE SINCRONISMO ABSOLUTA
     const nowMs = forcedNowMs !== null ? forcedNowMs : getCurrentMonthMs();
     const seekOffsetSec = (nowMs - ev.startMs) / 1000;
@@ -398,6 +409,12 @@ async function radioLoop(mySession) {
     // 2. RADAR DE EVENTOS (O Motor Permanente)
     // =========================================================================
     while(started && currentSessionId === mySession) {
+        
+        // Mantém o motor acordado em cada volta do radar!
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
         nowMs = getCurrentMonthMs();
         
         // A. RADAR PRELOAD: Olha 15 segundos para a frente na programação e descodifica
