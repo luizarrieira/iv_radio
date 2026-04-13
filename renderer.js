@@ -13,8 +13,10 @@ const DUCK_UP_TIME = 0.1;
 
 /* =================== Gerador de Silêncio Real =================== */
 function gerarSilencio10Segundos() {
-    const sampleRate = 8000, segundos = 10, channels = 1, bps = 8;
-    const dataSize = sampleRate * segundos; 
+    // CORREÇÃO: Mudado para 16-bits! O zero agora significa Silêncio Absoluto.
+    const sampleRate = 8000, segundos = 10, channels = 1, bps = 16;
+    const blockAlign = channels * (bps / 8);
+    const dataSize = sampleRate * segundos * blockAlign; 
     const buffer = new ArrayBuffer(44 + dataSize);
     const view = new DataView(buffer);
     const writeStr = (pos, str) => { for(let i=0; i<str.length; i++) view.setUint8(pos+i, str.charCodeAt(i)); };
@@ -22,8 +24,8 @@ function gerarSilencio10Segundos() {
     writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true);
     writeStr(8, 'WAVE'); writeStr(12, 'fmt '); view.setUint32(16, 16, true);
     view.setUint16(20, 1, true); view.setUint16(22, channels, true);
-    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate, true);
-    view.setUint16(32, 1, true); view.setUint16(34, bps, true);
+    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true); view.setUint16(34, bps, true);
     writeStr(36, 'data'); view.setUint32(40, dataSize, true);
 
     let binary = '';
@@ -433,11 +435,10 @@ async function radioLoop(mySession) {
     }, 250);
 }
 
-// ==== CORREÇÃO DA ORDEM (A Corrida de Cavalos Resolvida) ====
+// ==== CONTROLO DE ESTADO GLOBAL ====
 async function startRadio(expansionKey, radioKey){
     if(started && activeExpansionKey === expansionKey && activeRadioKey === radioKey) return;
     
-    // 1. PRIMEIRO limpamos a rádio anterior
     stopRadio(); 
     
     activeExpansionKey = expansionKey;
@@ -446,10 +447,12 @@ async function startRadio(expansionKey, radioKey){
     currentSessionId++; 
     const mySession = currentSessionId;
     
-    // 2. DEPOIS chamamos o desbloqueador (assim o stopRadio não o aborta!)
     unlockAudioForiOS();
     
-    if(audioCtx.state !== 'running') await audioCtx.resume().catch(()=>{});
+    // CORREÇÃO: Removido o 'await'. Não travamos mais o navegador se o Safari hesitar!
+    if(audioCtx.state !== 'running') {
+        audioCtx.resume().catch(()=>{});
+    }
     
     radioLoop(mySession).catch(e => {
         if(currentSessionId === mySession) started = false;
