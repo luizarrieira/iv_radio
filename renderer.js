@@ -292,7 +292,11 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
     if (audioCtx.state !== 'running') {
         audioCtx.resume().catch(e => log('Erro ao acordar placa de som:', e));
     }
-    musicGain.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
+    
+    // A CORREÇÃO: Só garante o volume no máximo se não houver locuções na agulha!
+    if (activeNarrationsCount === 0) {
+        musicGain.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
+    }
     narrationGain.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
 
     const nowMs = forcedNowMs !== null ? forcedNowMs : getCurrentMonthMs();
