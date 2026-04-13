@@ -366,20 +366,16 @@ async function radioLoop(mySession) {
     let nowMs = getCurrentMonthMs();
     
     // =========================================================================
-    // 1. O BLOCO MÁGICO DE HOT-SWAP (Corrige os atrasos de narração vs música)
+    // 1. O BLOCO MÁGICO DE HOT-SWAP
     // =========================================================================
     const hotSwapEvents = [];
     for (let i = 0; i < currentTimeline.length; i++) {
         const ev = currentTimeline[i];
-        
-        // Pega tudo o que já devia estar a tocar ou que vai tocar nos próximos 2 segundos!
         if (ev.startMs <= nowMs && ev.endMs > nowMs) {
             hotSwapEvents.push(ev); 
         } else if (ev.startMs > nowMs && ev.startMs - nowMs <= 2000) {
             hotSwapEvents.push(ev); 
         }
-        
-        // Marca o ponto do radar para o futuro
         if (ev.startMs > nowMs + 2000 && eventIndex === 0) {
             eventIndex = i;
         }
@@ -387,40 +383,36 @@ async function radioLoop(mySession) {
     if (eventIndex === 0) eventIndex = currentTimeline.findIndex(ev => ev.startMs > nowMs + 2000);
 
     if (hotSwapEvents.length > 0) {
-        // ESPERA todos os ficheiros daquele momento estarem carregados na memória RAM
         await Promise.all(hotSwapEvents.map(ev => preloadEvent(ev)));
-        
-        // Recalcula o relógio (porque o download demorou uns milissegundos)
         nowMs = getCurrentMonthMs();
-        const syncAudioContextTime = audioCtx.currentTime + 0.05; // Dá um espaço de 50ms para todos entrarem cravados
+        const syncAudioContextTime = audioCtx.currentTime + 0.05; 
         
         for (const ev of hotSwapEvents) {
             if (ev.startMs <= nowMs) {
-                // Hot-Swap: Disparamos todos com o mesmo relógio forçado
                 executeEvent(ev, mySession, syncAudioContextTime, nowMs);
             } else {
-                // Futuro imediato: Deixa agendar com o delay natural
                 executeEvent(ev, mySession); 
             }
         }
     }
 
     // =========================================================================
-    // 2. RADAR DE EVENTOS (O Motor Permanente)
+    // 2. O NOVO RADAR METRÔNOMO (Imune ao Ecrã Apagado do iOS)
     // =========================================================================
-    while(started && currentSessionId === mySession) {
+    
+    async function radarTick() {
+        if (!started || currentSessionId !== mySession) return;
         
-        // Mantém o motor acordado em cada volta do radar!
         if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
+            audioCtx.resume().catch(()=>{});
         }
 
         nowMs = getCurrentMonthMs();
         
-        // A. RADAR PRELOAD: Olha 15 segundos para a frente na programação e descodifica
+        // A. RADAR PRELOAD: Aumentado para olhar 30 segundos para o futuro!
         for (let i = eventIndex; i < currentTimeline.length; i++) {
             const ev = currentTimeline[i];
-            if (ev.startMs - nowMs <= 15000) {
+            if (ev.startMs - nowMs <= 30000) {
                 if (!preloadedEvents.has(i)) {
                     preloadedEvents.set(i, true);
                     preloadEvent(ev).catch(e => {}); 
@@ -428,9 +420,9 @@ async function radioLoop(mySession) {
             } else { break; }
         }
 
-        // B. GATILHO DE REPRODUÇÃO: Agenda o áudio 2 segundos ANTES de ele acontecer!
-        // Isto delega a responsabilidade do tempo para a Placa de Som, evitando engasgos no Javascript
-        while (eventIndex < currentTimeline.length && currentTimeline[eventIndex].startMs - nowMs <= 2000) {
+        // B. GATILHO DE REPRODUÇÃO: Agenda na placa de som 15 segundos ANTES!
+        // Isto delega a responsabilidade para o hardware, contornando o JS adormecido.
+        while (eventIndex < currentTimeline.length && currentTimeline[eventIndex].startMs - nowMs <= 15000) {
             const ev = currentTimeline[eventIndex];
             if (ev.endMs > nowMs) { 
                 executeEvent(ev, mySession);
@@ -444,9 +436,20 @@ async function radioLoop(mySession) {
             eventIndex = 0;
             preloadedEvents.clear();
         }
-
-        await sleep(50); 
     }
+
+    // O SEGREDO: O Áudio mudo no background dispara o radar a cada fração de segundo!
+    keepAliveAudio.addEventListener('timeupdate', radarTick);
+
+    // Fallback garantido para PC e Android (que lidam bem com intervalos)
+    const pcInterval = setInterval(() => {
+        if (!started || currentSessionId !== mySession) {
+            clearInterval(pcInterval);
+            keepAliveAudio.removeEventListener('timeupdate', radarTick);
+            return;
+        }
+        radarTick();
+    }, 250);
 }
 
 // ==== CONTROLO DE ESTADO GLOBAL ====
