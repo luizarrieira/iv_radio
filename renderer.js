@@ -9,33 +9,37 @@ const audioCtx = new AudioContextClass();
 
 // ==== INÍCIO DO DESBLOQUEADOR SUPREMO PARA IOS ====
 let iosUnlocked = false;
-const silentWAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
 function unlockAudioForiOS() {
     if (iosUnlocked) return;
     
-    // 1. Acorda o Motor Principal
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
+    // Força o Motor Principal
+    audioCtx.resume();
+    
     const buffer = audioCtx.createBuffer(1, 1, 22050);
     const node = audioCtx.createBufferSource();
     node.buffer = buffer;
     node.connect(audioCtx.destination);
     node.start(0);
 
-    // 2. A SUA IDEIA APLICADA: Play limpo sem interrupções!
-    streamAudioElement.src = silentWAV;
-    streamAudioElement.play().catch(e => log('iOS bloqueou o áudio mudo inicial:', e));
+    // Toca e pausa instantaneamente para libertar o HTML5 Audio
+    streamAudioElement.play().then(() => {
+        streamAudioElement.pause();
+    }).catch(e => {});
 
     iosUnlocked = true;
-    document.removeEventListener('touchstart', unlockAudioForiOS);
-    document.removeEventListener('click', unlockAudioForiOS);
-    log("🍏 Áudio do iOS BATIZADO e Desbloqueado com sucesso!");
+    
+    // Remove os eventos (limpeza)
+    ['touchstart', 'touchend', 'click'].forEach(evt => 
+        document.removeEventListener(evt, unlockAudioForiOS)
+    );
+    log("🍏 iOS Audio Desbloqueado com Sucesso!");
 }
 
-document.addEventListener('touchstart', unlockAudioForiOS, { once: true });
-document.addEventListener('click', unlockAudioForiOS, { once: true });
+// Escuta em todas as frentes possíveis!
+['touchstart', 'touchend', 'click'].forEach(evt => 
+    document.addEventListener(evt, unlockAudioForiOS, { once: true })
+);
 // ==== FIM DO DESBLOQUEADOR ====
 
 const DUCK_TARGET = 0.4;    
@@ -50,12 +54,13 @@ narrationGain.connect(analyser);
 
 const streamAudioElement = new Audio();
 streamAudioElement.crossOrigin = "anonymous";
-// A SUA IDEIA APLICADA: Ancorar o áudio fisicamente na página
+// ATRIBUTOS VITAIS PARA O IOS NÃO BLOQUEAR:
+streamAudioElement.setAttribute('playsinline', ''); 
+streamAudioElement.setAttribute('webkit-playsinline', '');
 streamAudioElement.style.display = 'none';
 document.body.appendChild(streamAudioElement);
 
-const streamSource = audioCtx.createMediaElementSource(streamAudioElement);
-streamSource.connect(musicGain); 
+// AS LINHAS "createMediaElementSource" e "connect(musicGain)" FORAM APAGADAS AQUI! 
 
 // ==== O SEGURANÇA (ANTI-SEEK GUARD) ====
 streamAudioElement.addEventListener('seeked', () => {
