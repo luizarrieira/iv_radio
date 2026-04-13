@@ -13,27 +13,27 @@ let iosUnlocked = false;
 function unlockAudioForiOS() {
     if (iosUnlocked) return;
     
-    // Força o Motor Principal
-    audioCtx.resume();
-    
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
     const buffer = audioCtx.createBuffer(1, 1, 22050);
     const node = audioCtx.createBufferSource();
     node.buffer = buffer;
     node.connect(audioCtx.destination);
     node.start(0);
 
-    // Toca e pausa instantaneamente para libertar o HTML5 Audio
-    streamAudioElement.play().then(() => {
-        streamAudioElement.pause();
-    }).catch(e => {});
+    streamAudioElement.src = silentWAV;
+    streamAudioElement.play().catch(e => log('iOS bloqueou o áudio mudo inicial:', e));
+
+    // LIGA A CORDA DE SALVAÇÃO PARA BACKGROUND!
+    keepAliveAudio.src = silentWAV;
+    keepAliveAudio.play().catch(e => log('Keep-alive bloqueado:', e));
 
     iosUnlocked = true;
-    
-    // Remove os eventos (limpeza)
     ['touchstart', 'touchend', 'click'].forEach(evt => 
         document.removeEventListener(evt, unlockAudioForiOS)
     );
-    log("🍏 iOS Audio Desbloqueado com Sucesso!");
+    log("🍏 iOS Audio BATIZADO e Desbloqueado com sucesso!");
 }
 
 // Escuta em todas as frentes possíveis!
@@ -52,13 +52,24 @@ const narrationGain = audioCtx.createGain(); narrationGain.connect(audioCtx.dest
 const analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
 narrationGain.connect(analyser);
 
+// A NOSSA FAIXA MUDA MÁGICA DE 1 BYTE
+const silentWAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+
+// O NOSSO STREAM PRINCIPAL (Mixes)
 const streamAudioElement = new Audio();
 streamAudioElement.crossOrigin = "anonymous";
-// ATRIBUTOS VITAIS PARA O IOS NÃO BLOQUEAR:
 streamAudioElement.setAttribute('playsinline', ''); 
 streamAudioElement.setAttribute('webkit-playsinline', '');
 streamAudioElement.style.display = 'none';
 document.body.appendChild(streamAudioElement);
+
+// O NOVO MOTOR KEEP-ALIVE (O Impede-Dormir)
+const keepAliveAudio = new Audio();
+keepAliveAudio.setAttribute('playsinline', '');
+keepAliveAudio.setAttribute('webkit-playsinline', '');
+keepAliveAudio.loop = true; // Toca em loop infinito!
+keepAliveAudio.style.display = 'none';
+document.body.appendChild(keepAliveAudio);
 
 // AS LINHAS "createMediaElementSource" e "connect(musicGain)" FORAM APAGADAS AQUI! 
 
@@ -454,8 +465,10 @@ function stopRadio() {
     preloadedEvents.clear();
 
     streamAudioElement.pause();
-    // Limpeza segura do stream para evitar vazamento de memória e erros de cache
     streamAudioElement.src = ""; 
+    
+    // DESLIGA O KEEP-ALIVE
+    keepAliveAudio.pause();
     
     const now = audioCtx.currentTime;
     musicGain.gain.cancelScheduledValues(now);
