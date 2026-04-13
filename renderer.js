@@ -1,4 +1,4 @@
-// renderer.js — Versão Final AAA: Estável, iOS Background (Silêncio Nativo) e Anti-Seek
+// renderer.js — Versão Final AAA: Correção de Race Condition e iOS Background Limpo
 
 /* =================== Init Data Check =================== */
 const WEATHER_LIMITS = window.GERAL_DATA ? window.GERAL_DATA.weatherLimits : { cloud:11, fog:12, rain:11, sun:12, wind:11 };
@@ -12,7 +12,6 @@ const DUCK_DOWN_TIME = 0.1;
 const DUCK_UP_TIME = 0.1;   
 
 /* =================== Gerador de Silêncio Real =================== */
-// Cria 10 segundos de áudio completamente mudo na RAM (sem mudo forçado do HTML)
 function gerarSilencio10Segundos() {
     const sampleRate = 8000, segundos = 10, channels = 1, bps = 8;
     const dataSize = sampleRate * segundos; 
@@ -47,6 +46,8 @@ const streamAudioElement = new Audio();
 streamAudioElement.crossOrigin = "anonymous";
 streamAudioElement.setAttribute('playsinline', ''); 
 streamAudioElement.setAttribute('webkit-playsinline', '');
+// Pré-carrega o silêncio logo à nascença!
+streamAudioElement.src = silentTrack; 
 streamAudioElement.style.display = 'none';
 document.body.appendChild(streamAudioElement);
 
@@ -83,7 +84,6 @@ streamAudioElement.addEventListener('seeked', () => {
         isSystemSeeking = false;
         return;
     }
-    // Só impede o avanço se estiver a tocar rádio a sério (não o silêncio)
     if (currentStreamEvent && !streamAudioElement.src.startsWith('data:')) {
         log("Tentativa de avanço bloqueada pelo Sistema Anti-Seek!");
         const correctOffset = (getCurrentMonthMs() - currentStreamEvent.startMs) / 1000;
@@ -113,14 +113,16 @@ function unlockAudioForiOS() {
     if (iosUnlocked) return;
     if (audioCtx.state !== 'running') audioCtx.resume().catch(()=>{});
 
-    // Toca o nosso silêncio longo, NÃO-MUTADO (muted = false), para acionar o widget da Apple!
-    streamAudioElement.src = silentTrack;
+    // Como já não removemos o SRC destrutivamente, este play vai funcionar perfeito!
+    if (!streamAudioElement.src.startsWith('data:')) {
+        streamAudioElement.src = silentTrack;
+    }
     streamAudioElement.muted = false; 
     streamAudioElement.loop = true;
     
     streamAudioElement.play().then(() => {
         iosUnlocked = true;
-        log("🍏 iOS Audio Desbloqueado com sucesso (Widget Background Ativo)!");
+        log("🍏 iOS Audio Desbloqueado com sucesso (Widget Ativo)!");
     }).catch(e => log('Desbloqueio aguardando interação.'));
 
     ['touchstart', 'touchend', 'click'].forEach(evt => document.removeEventListener(evt, unlockAudioForiOS));
@@ -251,7 +253,6 @@ async function preloadEvent(ev) {
 async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = null) {
     if (!started || currentSessionId !== mySession) return;
 
-    // A. REPRODUÇÃO DE STREAMS (Mixes e Talk Radios)
     if (ev.type === 'stream') {
         currentStreamEvent = ev;
         const offset = (getCurrentMonthMs() - ev.startMs) / 1000;
@@ -267,19 +268,16 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
         return;
     }
 
-    // B. A TÁTICA DE BACKGROUND NATIVA
-    // Se a rádio toca músicas normais, usamos o silêncio 10s (sem mute) para manter a tela viva!
     if (!currentStreamEvent) {
         if (streamAudioElement.paused || !streamAudioElement.src.startsWith('data:')) {
             streamAudioElement.src = silentTrack; 
-            streamAudioElement.muted = false; // VITAL PARA O WIDGET DO IOS
+            streamAudioElement.muted = false; 
             streamAudioElement.loop = true;
             streamAudioElement.play().catch(e => {});
             updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
         }
     }
 
-    // C. PROCESSAMENTO DAS MÚSICAS E VINHETAS (Web Audio API)
     let pathToPlay = ev.path;
     if (ev.type === 'dynamic_weather') {
         pathToPlay = ev._resolvedPath || pickWeatherFile(currentWeatherMain);
@@ -390,7 +388,6 @@ async function radioLoop(mySession) {
 
         nowMs = getCurrentMonthMs();
 
-        // A GUILHOTINA
         if (currentStreamEvent && currentStreamEvent.endMs <= nowMs) {
             if (!streamAudioElement.paused && !streamAudioElement.src.startsWith('data:')) {
                 log(`🛑 Guilhotina: Encerrando stream.`);
@@ -436,17 +433,21 @@ async function radioLoop(mySession) {
     }, 250);
 }
 
+// ==== CORREÇÃO DA ORDEM (A Corrida de Cavalos Resolvida) ====
 async function startRadio(expansionKey, radioKey){
-    unlockAudioForiOS();
-
     if(started && activeExpansionKey === expansionKey && activeRadioKey === radioKey) return;
     
+    // 1. PRIMEIRO limpamos a rádio anterior
     stopRadio(); 
+    
     activeExpansionKey = expansionKey;
     activeRadioKey = radioKey;
     started = true;
     currentSessionId++; 
     const mySession = currentSessionId;
+    
+    // 2. DEPOIS chamamos o desbloqueador (assim o stopRadio não o aborta!)
+    unlockAudioForiOS();
     
     if(audioCtx.state !== 'running') await audioCtx.resume().catch(()=>{});
     
@@ -466,8 +467,13 @@ function stopRadio() {
     preloadedEvents.clear();
 
     streamAudioElement.pause();
-    streamAudioElement.removeAttribute('src'); 
-    streamAudioElement.load();
+    
+    // CORREÇÃO: Não removemos mais o SRC destrutivamente!
+    // Apenas regressamos à segurança do silêncio se não estivermos já nele.
+    if (!streamAudioElement.src.startsWith('data:')) {
+        streamAudioElement.src = silentTrack; 
+    }
+    
     currentStreamEvent = null;
     
     const now = audioCtx.currentTime;
