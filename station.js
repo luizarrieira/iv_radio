@@ -1405,67 +1405,71 @@
   /* ================================================================================= */
   
   window.STATION_DATA = {
-    PROGRAMACOES: {
-      'iv': {
-        'radio_liberty_rock': obj_lr_iv,
-        'radio_dance_rock': obj_dr_iv,
-        'radio_dance_mix': obj_dm_iv,
-        'radio_beat_95': obj_beat_iv,
-        'radio_wktt': obj_wktt_iv,
-        'radio_hardcore': obj_lchc_iv,
-        'radio_vladivostok': obj_vlad_iv,
-        'radio_san_juan_sounds': obj_sjs_iv,
-        'radio_afro_beat': obj_afro_iv,
-        'radio_babylon': obj_baby_iv,
-        'radio_bobby_konders': obj_massiveb_iv,
-        'radio_classical_ambient': obj_journey_iv,
-        'radio_fusion_fm': obj_fusion_iv,
-        'radio_jazz_nation': obj_jnr_iv,
-        'radio_k109_the_studio': obj_k109_iv,
-        'radio_lazlow': obj_lazlow_iv,
-        'radio_ny_classics': obj_ny_classics_iv,
-        'radio_plr': obj_plr_iv,
-        'radio_the_vibe': obj_thevibe_iv
-      },
-      'eflc': {
-        'radio_liberty_rock': obj_lr_eflc,
-        'radio_dance_rock': obj_dr_eflc,
-        'radio_dance_mix': obj_dm_eflc,
-        'radio_beat_95': obj_beat_eflc,
-        'radio_wktt': obj_wktt_eflc,
-        'radio_hardcore': obj_lchc_eflc,
-        'radio_vladivostok': obj_vlad_eflc,
-        'radio_san_juan_sounds': obj_sjs_eflc,
-        'radio_k109_the_studio': obj_k109_eflc,
-        'radio_lazlow': obj_lazlow_eflc,
-        'radio_meditation': obj_med_eflc,
-        'radio_ramjamfm': obj_ramjam_eflc,
-        'radio_vcfm': obj_vcfm_eflc
-      },
-      'complete': {
-        'radio_liberty_rock': obj_lr_complete,
-        'radio_dance_rock': obj_dr_complete,
-        'radio_dance_mix': obj_dm_complete,
-        'radio_beat_95': obj_beat_complete,
-        'radio_wktt': obj_wktt_complete,
-        'radio_hardcore': obj_lchc_complete,
-        'radio_vladivostok': obj_vlad_complete,
-        'radio_san_juan_sounds': obj_sjs_complete,
-        'radio_afro_beat': obj_afro_complete,
-        'radio_babylon': obj_baby_complete,
-        'radio_bobby_konders': obj_massiveb_complete,
-        'radio_classical_ambient': obj_journey_complete,
-        'radio_fusion_fm': obj_fusion_complete,
-        'radio_jazz_nation': obj_jnr_complete,
-        'radio_k109_the_studio': obj_k109_complete,
-        'radio_lazlow': obj_lazlow_complete,
-        'radio_ny_classics': obj_ny_classics_complete,
-        'radio_plr': obj_plr_complete,
-        'radio_the_vibe': obj_thevibe_complete,
-        'radio_meditation': obj_med_complete,
-        'radio_ramjamfm': obj_ramjam_complete,
-        'radio_vcfm': obj_vcfm_complete
-      }
-    }
-  };
+    PROGRAMACOES: {
+      'iv': {
+        'radio_liberty_rock': obj_lr_iv,
+        'radio_dance_rock': obj_dr_iv,
+        'radio_dance_mix': obj_dm_iv,
+        'radio_beat_95': obj_beat_iv,
+        'radio_wktt': obj_wktt_iv,
+        'radio_hardcore': obj_lchc_iv,
+        'radio_vladivostok': obj_vlad_iv,
+        'radio_san_juan_sounds': obj_sjs_iv,
+        'radio_afro_beat': obj_afro_iv,
+        'radio_babylon': obj_baby_iv,
+        'radio_bobby_konders': obj_massiveb_iv,
+        'radio_classical_ambient': obj_journey_iv,
+        'radio_fusion_fm': obj_fusion_iv,
+        'radio_jazz_nation': obj_jnr_iv,
+        'radio_k109_the_studio': obj_k109_iv,
+        'radio_lazlow': obj_lazlow_iv,
+        'radio_ny_classics': obj_ny_classics_iv,
+        'radio_plr': obj_plr_iv,
+        'radio_the_vibe': obj_thevibe_iv
+      },
+      'eflc': {
+        'radio_liberty_rock': obj_lr_eflc,
+        'radio_dance_rock': obj_dr_eflc,
+        'radio_dance_mix': obj_dm_eflc,
+        'radio_beat_95': obj_beat_eflc,
+        'radio_wktt': obj_wktt_eflc,
+        'radio_hardcore': obj_lchc_eflc,
+        'radio_vladivostok': obj_vlad_eflc,
+        'radio_san_juan_sounds': obj_sjs_eflc,
+        'radio_k109_the_studio': obj_k109_eflc,
+        'radio_lazlow': obj_lazlow_eflc,
+        'radio_meditation': obj_med_eflc,
+        'radio_ramjamfm': obj_ramjam_eflc,
+        'radio_vcfm': obj_vcfm_eflc
+      },
+      'complete': {
+        // ==== RÁDIOS HÍBRIDAS E COMPLEXAS (Mantêm os objetos próprios) ====
+        'radio_liberty_rock': obj_lr_complete,
+        'radio_dance_rock': obj_dr_complete,
+        'radio_dance_mix': obj_dm_complete,
+        'radio_beat_95': obj_beat_complete,
+        'radio_wktt': obj_wktt_complete,
+        'radio_hardcore': obj_lchc_complete,
+        'radio_vladivostok': obj_vlad_complete,
+        'radio_san_juan_sounds': obj_sjs_complete,
+        'radio_k109_the_studio': obj_k109_complete,
+        'radio_lazlow': obj_lazlow_complete,
+
+        // ==== RÁDIOS PURAS (Agora são atalhos diretos e limpos!) ====
+        'radio_afro_beat': { aliasFrom: 'iv' },
+        'radio_babylon': { aliasFrom: 'iv' },
+        'radio_bobby_konders': { aliasFrom: 'iv' },
+        'radio_classical_ambient': { aliasFrom: 'iv' },
+        'radio_fusion_fm': { aliasFrom: 'iv' },
+        'radio_jazz_nation': { aliasFrom: 'iv' },
+        'radio_ny_classics': { aliasFrom: 'iv' },
+        'radio_plr': { aliasFrom: 'iv' },
+        'radio_the_vibe': { aliasFrom: 'iv' },
+
+        'radio_meditation': { aliasFrom: 'eflc' },
+        'radio_ramjamfm': { aliasFrom: 'eflc' },
+        'radio_vcfm': { aliasFrom: 'eflc' }
+      }
+    }
+  };
 })();
