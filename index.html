@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>IV Radio</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600&display=swap');
@@ -19,6 +19,8 @@
       height: 100vh;
       user-select: none;
       overflow: hidden;
+      /* NOVA REGRA: Previne o efeito elástico do iOS/Android */
+      overscroll-behavior: none; 
     }
     
     /* === SISTEMA DE TELAS === */
@@ -59,6 +61,8 @@
     #viewPlayer {
       cursor: grab;
       position: relative;
+      /* NOVA REGRA: Diz ao navegador "Ignora os arrastos laterais, deixa só o vertical funcionar para o log" */
+      touch-action: pan-y; 
     }
     #viewPlayer:active { cursor: grabbing; }
 
@@ -423,27 +427,41 @@
       else if (e.deltaY < 0) goPrev(); 
     }, { passive: false });
 
-    let isDragging = false, startX = 0;
+    let isDragging = false, startX = 0, startY = 0;
+
     const dragStart = (e) => { 
       if (e.target.closest('#logArea') || e.target.closest('#btnBack')) return;
       isDragging = true; 
-      startX = e.clientX || e.changedTouches[0].clientX; 
+      // Captura tanto o Eixo X quanto o Eixo Y inicial
+      const touch = e.type.includes('mouse') ? e : e.changedTouches[0];
+      startX = touch.clientX; 
+      startY = touch.clientY;
     };
+
     const dragEnd = (e) => {
       if (!isDragging) return;
       isDragging = false;
-      const x = e.clientX || e.changedTouches[0].clientX;
-      const diff = startX - x;
-      if (diff > 50) goNext();
-      else if (diff < -50) goPrev();
-      else wakeUpCarousel(); 
+      
+      const touch = e.type.includes('mouse') ? e : e.changedTouches[0];
+      const diffX = startX - touch.clientX;
+      const diffY = startY - touch.clientY;
+
+      // A MÁGICA: Só executa a troca se o movimento na horizontal (X) for MAIOR que na vertical (Y)
+      if (Math.abs(diffX) > Math.abs(diffY)) {
+          if (diffX > 50) goNext();
+          else if (diffX < -50) goPrev();
+          else wakeUpCarousel(); 
+      } else {
+          // Se o utilizador deslizou para cima/baixo, ignoramos a troca e só acordamos o menu
+          wakeUpCarousel();
+      }
     };
 
     viewPlayer.addEventListener('mousedown', dragStart);
     viewPlayer.addEventListener('mouseup', dragEnd);
     viewPlayer.addEventListener('mouseleave', (e) => { if(isDragging) dragEnd(e); });
     
-    viewPlayer.addEventListener('touchstart', dragStart);
+    viewPlayer.addEventListener('touchstart', dragStart, { passive: true });
     viewPlayer.addEventListener('touchend', dragEnd);
 
   </script>
