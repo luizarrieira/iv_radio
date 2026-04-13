@@ -197,9 +197,8 @@ function onNarrationStart(scheduledTime = null){
     activeNarrationsCount++;
     const triggerTime = scheduledTime !== null ? Math.max(audioCtx.currentTime, scheduledTime) : audioCtx.currentTime;
     
-    musicGain.gain.cancelScheduledValues(triggerTime);
-    musicGain.gain.setValueAtTime(musicGain.gain.value, triggerTime);
-    musicGain.gain.linearRampToValueAtTime(DUCK_TARGET, triggerTime + DUCK_DOWN_TIME);
+    // Transição suave exponencial. Ignora âncoras e não polui o futuro!
+    musicGain.gain.setTargetAtTime(DUCK_TARGET, triggerTime, DUCK_DOWN_TIME);
 }
 
 function onNarrationEnd(scheduledTime = null){
@@ -208,9 +207,8 @@ function onNarrationEnd(scheduledTime = null){
     if(activeNarrationsCount === 0){
         const triggerTime = scheduledTime !== null ? Math.max(audioCtx.currentTime, scheduledTime) : audioCtx.currentTime;
         
-        musicGain.gain.cancelScheduledValues(triggerTime);
-        musicGain.gain.setValueAtTime(musicGain.gain.value, triggerTime);
-        musicGain.gain.linearRampToValueAtTime(1.0, triggerTime + DUCK_UP_TIME);
+        // Só volta ao volume normal de forma suave e contínua
+        musicGain.gain.setTargetAtTime(1.0, triggerTime, DUCK_UP_TIME);
     }
 }
 
