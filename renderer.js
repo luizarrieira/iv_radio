@@ -89,20 +89,21 @@ function updateChromeMediaHub(titleText) {
             album: activeExpansionKey.toUpperCase() + ' EDITION'
         });
         
-        // A MÁGICA: Uma função que não faz nada!
-        const blockAction = () => { log("Ação bloqueada no widget do sistema."); };
-
-        // Isso desativa a barra de progresso (scrubber) e deixa-a cinza/intocável!
+        const blockAction = () => {}; // Função vazia que bloqueia interações
         navigator.mediaSession.setActionHandler('seekto', blockAction);
         navigator.mediaSession.setActionHandler('seekbackward', blockAction);
         navigator.mediaSession.setActionHandler('seekforward', blockAction);
         navigator.mediaSession.setActionHandler('previoustrack', blockAction);
         navigator.mediaSession.setActionHandler('nexttrack', blockAction);
 
-        // Opcional: Se você quiser que o botão de "Pause" no fone de ouvido pare a rádio
-        navigator.mediaSession.setActionHandler('pause', () => {
-            if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
-        });
+        // A MÁGICA DO LIVE STREAM: Diz ao sistema que a duração é infinita
+        if ('setPositionState' in navigator.mediaSession) {
+            navigator.mediaSession.setPositionState({
+                duration: Infinity, 
+                playbackRate: 1.0,
+                position: 0
+            });
+        }
     }
 }
 
@@ -265,8 +266,6 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
     if (ev.type === 'stream') {
         currentStreamEvent = ev;
         streamAudioElement.src = ev.path;
-        
-        // Silencia para esconder qualquer "lixo sonoro" enquanto ele procura o tempo certo
         streamAudioElement.muted = true; 
         streamAudioElement.loop = false;
 
@@ -276,24 +275,22 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
 
             const forcePlay = () => {
                 if (currentStreamEvent !== ev) return;
-                streamAudioElement.muted = false; // Devolve o som
+                streamAudioElement.muted = false; 
                 streamAudioElement.play().catch(e => log('Autoplay stream bloqueado:', e.message));
-                streamAudioElement.removeEventListener('seeked', forcePlay);
             };
 
             if (offset <= 0.5) {
-                // Se for o início exato da rádio, não precisamos esperar o salto
                 forcePlay();
             } else {
-                // A CURA DA MIX: Ouve o evento 'seeked' antes de mandar o Play!
-                streamAudioElement.addEventListener('seeked', forcePlay);
-                streamAudioElement.currentTime = offset; // Isto aciona a busca e o evento acima
+                // O { once: true } impede o vazamento de memória! Ele destrói-se após ser usado.
+                streamAudioElement.addEventListener('seeked', forcePlay, { once: true });
+                streamAudioElement.currentTime = offset; 
             }
 
             updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
         };
 
-        if (streamAudioElement.readyState >= 1) { // HAVE_METADATA
+        if (streamAudioElement.readyState >= 1) { 
             applyOffsetAndPlay();
         } else {
             streamAudioElement.onloadedmetadata = applyOffsetAndPlay;
@@ -513,10 +510,10 @@ function stopRadio() {
 
     streamAudioElement.pause();
     
-    // CORREÇÃO: Não removemos mais o SRC destrutivamente!
-    // Apenas regressamos à segurança do silêncio se não estivermos já nele.
+    // CORREÇÃO: Mata o download pendente da Mix anterior!
     if (!streamAudioElement.src.startsWith('data:')) {
         streamAudioElement.src = silentTrack; 
+        streamAudioElement.load(); // ESTA LINHA CORTA A CONEXÃO HTTP IMEDIATAMENTE
     }
     
     currentStreamEvent = null;
@@ -530,3 +527,4 @@ function stopRadio() {
 window.__RADIO = window.__RADIO || {};
 window.__RADIO.startRadio = startRadio;
 window.__RADIO.stopRadio = stopRadio;
+window.__RADIO.unlock = unlockAudioForiOS;
