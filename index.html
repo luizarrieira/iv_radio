@@ -409,6 +409,9 @@
     // ----------------- EVENTOS DE INTERAÇÃO -----------------
     document.querySelectorAll('.btn-exp').forEach(btn => {
       btn.addEventListener('click', (e) => {
+        // A MÁGICA DO AUTOPLAY: Destranca o áudio na hora, antes do delay da animação!
+        if(window.__RADIO && window.__RADIO.unlock) window.__RADIO.unlock();
+
         currentExpansion = e.target.getAttribute('data-exp');
         
         viewMenu.classList.remove('active');
