@@ -1,4 +1,4 @@
-// renderer.js — Versão Final AAA: Correção de Race Condition e iOS Background Limpo
+// renderer.js — Versão Limpa e Estável
 
 /* =================== Init Data Check =================== */
 const WEATHER_LIMITS = window.GERAL_DATA ? window.GERAL_DATA.weatherLimits : { cloud:11, fog:12, rain:11, sun:12, wind:11 };
@@ -13,7 +13,6 @@ const DUCK_UP_TIME = 0.1;
 
 /* =================== Gerador de Silêncio Real =================== */
 function gerarSilencio10Segundos() {
-    // CORREÇÃO: Mudado para 16-bits! O zero agora significa Silêncio Absoluto.
     const sampleRate = 8000, segundos = 10, channels = 1, bps = 16;
     const blockAlign = channels * (bps / 8);
     const dataSize = sampleRate * segundos * blockAlign; 
@@ -48,7 +47,6 @@ const streamAudioElement = new Audio();
 streamAudioElement.crossOrigin = "anonymous";
 streamAudioElement.setAttribute('playsinline', ''); 
 streamAudioElement.setAttribute('webkit-playsinline', '');
-// Pré-carrega o silêncio logo à nascença!
 streamAudioElement.src = silentTrack; 
 streamAudioElement.style.display = 'none';
 document.body.appendChild(streamAudioElement);
@@ -79,7 +77,7 @@ function getCurrentMonthMs() {
     return now.getTime() - startOfMonth.getTime();
 }
 
-/* =================== Personalizar Widget Media (Chrome/iOS) =================== */
+/* =================== Personalizar Widget Media =================== */
 function updateChromeMediaHub(titleText) {
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -88,23 +86,12 @@ function updateChromeMediaHub(titleText) {
             album: activeExpansionKey.toUpperCase() + ' EDITION'
         });
         
-        const blockAction = () => {}; // Função vazia que bloqueia interações
+        const blockAction = () => {}; 
         navigator.mediaSession.setActionHandler('seekto', blockAction);
         navigator.mediaSession.setActionHandler('seekbackward', blockAction);
         navigator.mediaSession.setActionHandler('seekforward', blockAction);
         navigator.mediaSession.setActionHandler('previoustrack', blockAction);
         navigator.mediaSession.setActionHandler('nexttrack', blockAction);
-
-        // A MÁGICA DO LIVE STREAM: Diz ao sistema que a duração é infinita
-        if ('setPositionState' in navigator.mediaSession) {
-            navigator.mediaSession.setPositionState({
-                duration: Infinity, 
-                playbackRate: 1.0,
-                position: 0
-            });
-        }
-        // FORÇA O ESTADO DE PLAYING (Esconde o comportamento de TV a Cabo)
-        navigator.mediaSession.playbackState = 'playing';
     }
 }
 
@@ -121,7 +108,7 @@ function unlockAudioForiOS() {
     
     streamAudioElement.play().then(() => {
         iosUnlocked = true;
-        log("🍏 iOS Audio Desbloqueado com sucesso (Widget Ativo)!");
+        log("🍏 iOS Audio Desbloqueado com sucesso!");
     }).catch(e => log('Desbloqueio aguardando interação.'));
 
     ['touchstart', 'touchend', 'click'].forEach(evt => document.removeEventListener(evt, unlockAudioForiOS));
@@ -133,10 +120,8 @@ async function loadTimeline(expansionKey, radioKey) {
     let targetExpansion = expansionKey;
 
     const radioData = window.STATION_DATA.PROGRAMACOES[expansionKey]?.[radioKey];
-    
     if (radioData && radioData.aliasFrom) {
         targetExpansion = radioData.aliasFrom;
-        log(`🔀 Roteamento Dinâmico: Puxando ${radioKey} diretamente da expansão ${targetExpansion.toUpperCase()}.`);
     }
 
     const fileName = radioKey.replace('radio_', 'prog_') + '.json';
@@ -144,10 +129,10 @@ async function loadTimeline(expansionKey, radioKey) {
     
     try {
         const resp = await fetch(url);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status} - Não encontrado em: ${url}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         currentTimeline = await resp.json();
     } catch(e) {
-        console.error("Erro CRÍTICO ao carregar timeline:", e.message);
+        console.error("Erro ao carregar timeline:", e.message);
         currentTimeline = [];
     }
 }
@@ -165,7 +150,6 @@ async function getAudioBuffer(filePath, limparDaMemoria = false) {
         const ab = await resp.arrayBuffer();
         const buf = await audioCtx.decodeAudioData(ab);
         audioBufferCache.set(filePath, buf);
-        // AUMENTADO PARA 40: Reduz recarregamentos agressivos ao pular estações
         if (audioBufferCache.size > 40) { 
             const oldestKey = audioBufferCache.keys().next().value;
             audioBufferCache.delete(oldestKey);
@@ -204,7 +188,6 @@ function onNarrationStart(scheduledTime = null){
     if(!started) return;
     activeNarrationsCount++;
     const triggerTime = scheduledTime !== null ? Math.max(audioCtx.currentTime, scheduledTime) : audioCtx.currentTime;
-    
     musicGain.gain.setTargetAtTime(DUCK_TARGET, triggerTime, DUCK_DOWN_TIME);
 }
 
@@ -258,36 +241,25 @@ async function preloadEvent(ev) {
 async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = null) {
     if (!started || currentSessionId !== mySession) return;
 
+    // VERSÃO ESTÁVEL DO STREAMING (Simples e Direta)
     if (ev.type === 'stream') {
         currentStreamEvent = ev;
         streamAudioElement.src = ev.path;
-        streamAudioElement.muted = true; 
         streamAudioElement.loop = false;
-
-        const applyOffsetAndPlay = () => {
+        
+        const offset = (getCurrentMonthMs() - ev.startMs) / 1000;
+        
+        const playStream = () => {
             if (currentStreamEvent !== ev) return;
-            const offset = (getCurrentMonthMs() - ev.startMs) / 1000;
-
-            const forcePlay = () => {
-                if (currentStreamEvent !== ev) return;
-                streamAudioElement.muted = false; 
-                streamAudioElement.play().catch(e => log('Autoplay stream bloqueado:', e.message));
-            };
-
-            if (offset <= 0.5) {
-                forcePlay();
-            } else {
-                streamAudioElement.addEventListener('seeked', forcePlay, { once: true });
-                streamAudioElement.currentTime = offset; 
-            }
-
+            if (offset > 0) streamAudioElement.currentTime = offset;
+            streamAudioElement.play().catch(e => log('Stream autoplay bloqueado:', e));
             updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
         };
 
         if (streamAudioElement.readyState >= 1) { 
-            applyOffsetAndPlay();
+            playStream();
         } else {
-            streamAudioElement.onloadedmetadata = applyOffsetAndPlay;
+            streamAudioElement.onloadedmetadata = playStream;
         }
         return;
     }
@@ -309,11 +281,10 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
     if (!pathToPlay) return;
 
     const buf = await getAudioBuffer(pathToPlay, true);
-    // ABORTA SE A SESSÃO MUDOU ENQUANTO BAIXAVA: Previne narração perdida da rádio anterior
     if (!buf || !started || currentSessionId !== mySession) return;
 
     if (audioCtx.state !== 'running') {
-        audioCtx.resume().catch(e => log('Erro ao acordar placa de som:', e));
+        audioCtx.resume().catch(e => log('Erro ao acordar placa:', e));
     }
     
     if (activeNarrationsCount === 0) {
@@ -361,24 +332,14 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
 
     try {
         s.start(scheduledTime, startOffset);
-        if (startOffset > 0) {
-            log(`🔄 HOT-SWAP: ${pathToPlay} (Avançado: ${startOffset.toFixed(2)}s)`);
-        } else {
-            log(`▶️ Agendado: ${pathToPlay}`);
-        }
     } catch (err) {
-        log(`⚠️ Erro ao tocar (offset além do limite?): ${pathToPlay}`);
         if (ev.type === 'voiceover') onNarrationEnd(audioCtx.currentTime); 
     }
 }
 
 async function radioLoop(mySession) {
-    log(`A sintonizar Rádio (${activeExpansionKey} -> ${activeRadioKey})...`);
     await loadTimeline(activeExpansionKey, activeRadioKey);
-    
-    if (currentTimeline.length === 0) {
-        return;
-    }
+    if (currentTimeline.length === 0) return;
 
     let eventIndex = 0;
     let nowMs = getCurrentMonthMs();
@@ -414,15 +375,12 @@ async function radioLoop(mySession) {
     async function radarTick() {
         if (!started || currentSessionId !== mySession) return;
         
-        if (audioCtx.state !== 'running') {
-            audioCtx.resume().catch(()=>{});
-        }
+        if (audioCtx.state !== 'running') audioCtx.resume().catch(()=>{});
 
         nowMs = getCurrentMonthMs();
 
         if (currentStreamEvent && currentStreamEvent.endMs <= nowMs) {
             if (!streamAudioElement.paused && !streamAudioElement.src.startsWith('data:')) {
-                log(`🛑 Guilhotina: Encerrando stream.`);
                 streamAudioElement.pause();
             }
             currentStreamEvent = null;
@@ -440,9 +398,7 @@ async function radioLoop(mySession) {
 
         while (eventIndex < currentTimeline.length && currentTimeline[eventIndex].startMs - nowMs <= 15000) {
             const ev = currentTimeline[eventIndex];
-            if (ev.endMs > nowMs) { 
-                executeEvent(ev, mySession);
-            }
+            if (ev.endMs > nowMs) executeEvent(ev, mySession);
             preloadedEvents.delete(eventIndex); 
             eventIndex++;
         }
@@ -479,9 +435,7 @@ async function startRadio(expansionKey, radioKey){
     
     unlockAudioForiOS();
     
-    if(audioCtx.state !== 'running') {
-        audioCtx.resume().catch(()=>{});
-    }
+    if(audioCtx.state !== 'running') audioCtx.resume().catch(()=>{});
     
     radioLoop(mySession).catch(e => {
         if(currentSessionId === mySession) started = false;
@@ -489,7 +443,6 @@ async function startRadio(expansionKey, radioKey){
 }
 
 function stopRadio() {
-    log('Limpeza profunda do sistema...');
     started = false; 
 
     activeAudioSources.forEach(src => {
@@ -501,10 +454,10 @@ function stopRadio() {
 
     streamAudioElement.pause();
     
-    // LIMPEZA BRUTA: Remove o src totalmente para matar o download na hora
-    streamAudioElement.removeAttribute('src'); 
-    streamAudioElement.load(); 
-    streamAudioElement.src = silentTrack; 
+    // RETORNADO AO ORIGINAL SEGURO: Sem "removeAttribute" quebrando o áudio do iOS
+    if (!streamAudioElement.src.startsWith('data:')) {
+        streamAudioElement.src = silentTrack; 
+    }
     
     currentStreamEvent = null;
     
