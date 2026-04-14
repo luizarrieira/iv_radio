@@ -66,7 +66,6 @@ let preloadedEvents = new Map();
 let currentTimeline = [];
 
 let currentStreamEvent = null; 
-let isSystemSeeking = false; 
 let iosUnlocked = false;
 
 /* =================== Utils & Relógio Mestre =================== */
@@ -104,6 +103,8 @@ function updateChromeMediaHub(titleText) {
                 position: 0
             });
         }
+        // FORÇA O ESTADO DE PLAYING (Esconde o comportamento de TV a Cabo)
+        navigator.mediaSession.playbackState = 'playing';
     }
 }
 
@@ -112,7 +113,6 @@ function unlockAudioForiOS() {
     if (iosUnlocked) return;
     if (audioCtx.state !== 'running') audioCtx.resume().catch(()=>{});
 
-    // Como já não removemos o SRC destrutivamente, este play vai funcionar perfeito!
     if (!streamAudioElement.src.startsWith('data:')) {
         streamAudioElement.src = silentTrack;
     }
@@ -132,15 +132,12 @@ function unlockAudioForiOS() {
 async function loadTimeline(expansionKey, radioKey) {
     let targetExpansion = expansionKey;
 
-    // ==== O ROTEADOR DINÂMICO ====
-    // Vai ler diretamente ao station.js! Se a rádio tiver um "aliasFrom", ele muda a rota.
     const radioData = window.STATION_DATA.PROGRAMACOES[expansionKey]?.[radioKey];
     
     if (radioData && radioData.aliasFrom) {
         targetExpansion = radioData.aliasFrom;
         log(`🔀 Roteamento Dinâmico: Puxando ${radioKey} diretamente da expansão ${targetExpansion.toUpperCase()}.`);
     }
-    // =============================
 
     const fileName = radioKey.replace('radio_', 'prog_') + '.json';
     const url = `programacoes_mensais/${targetExpansion}/${fileName}`;
@@ -168,7 +165,8 @@ async function getAudioBuffer(filePath, limparDaMemoria = false) {
         const ab = await resp.arrayBuffer();
         const buf = await audioCtx.decodeAudioData(ab);
         audioBufferCache.set(filePath, buf);
-        if (audioBufferCache.size > 20) { 
+        // AUMENTADO PARA 40: Reduz recarregamentos agressivos ao pular estações
+        if (audioBufferCache.size > 40) { 
             const oldestKey = audioBufferCache.keys().next().value;
             audioBufferCache.delete(oldestKey);
         }
@@ -201,13 +199,12 @@ function pickWeatherFile(condition){
     return getW('SUN', L.sun);
 }
 
-/* =================== Motores de Reprodução (Agendamento Físico) =================== */
+/* =================== Motores de Reprodução =================== */
 function onNarrationStart(scheduledTime = null){
     if(!started) return;
     activeNarrationsCount++;
     const triggerTime = scheduledTime !== null ? Math.max(audioCtx.currentTime, scheduledTime) : audioCtx.currentTime;
     
-    // Transição suave exponencial. Ignora âncoras e não polui o futuro!
     musicGain.gain.setTargetAtTime(DUCK_TARGET, triggerTime, DUCK_DOWN_TIME);
 }
 
@@ -216,8 +213,6 @@ function onNarrationEnd(scheduledTime = null){
     activeNarrationsCount = Math.max(0, activeNarrationsCount-1);
     if(activeNarrationsCount === 0){
         const triggerTime = scheduledTime !== null ? Math.max(audioCtx.currentTime, scheduledTime) : audioCtx.currentTime;
-        
-        // Só volta ao volume normal de forma suave e contínua
         musicGain.gain.setTargetAtTime(1.0, triggerTime, DUCK_UP_TIME);
     }
 }
@@ -282,7 +277,6 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
             if (offset <= 0.5) {
                 forcePlay();
             } else {
-                // O { once: true } impede o vazamento de memória! Ele destrói-se após ser usado.
                 streamAudioElement.addEventListener('seeked', forcePlay, { once: true });
                 streamAudioElement.currentTime = offset; 
             }
@@ -315,13 +309,13 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
     if (!pathToPlay) return;
 
     const buf = await getAudioBuffer(pathToPlay, true);
+    // ABORTA SE A SESSÃO MUDOU ENQUANTO BAIXAVA: Previne narração perdida da rádio anterior
     if (!buf || !started || currentSessionId !== mySession) return;
 
     if (audioCtx.state !== 'running') {
         audioCtx.resume().catch(e => log('Erro ao acordar placa de som:', e));
     }
     
-    // A CORREÇÃO: Só garante o volume no máximo se não houver locuções na agulha!
     if (activeNarrationsCount === 0) {
         musicGain.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
     }
@@ -374,7 +368,6 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
         }
     } catch (err) {
         log(`⚠️ Erro ao tocar (offset além do limite?): ${pathToPlay}`);
-        // Se a locução falhar a tocar, forçamos o encerramento dela para o volume subir!
         if (ev.type === 'voiceover') onNarrationEnd(audioCtx.currentTime); 
     }
 }
@@ -486,7 +479,6 @@ async function startRadio(expansionKey, radioKey){
     
     unlockAudioForiOS();
     
-    // CORREÇÃO: Removido o 'await'. Não travamos mais o navegador se o Safari hesitar!
     if(audioCtx.state !== 'running') {
         audioCtx.resume().catch(()=>{});
     }
@@ -497,24 +489,22 @@ async function startRadio(expansionKey, radioKey){
 }
 
 function stopRadio() {
-    log('A parar rádio atual...');
+    log('Limpeza profunda do sistema...');
     started = false; 
 
     activeAudioSources.forEach(src => {
-        // A CURA: Mata o gatilho para o "onended" não vazar para a rádio seguinte!
         src.onended = null; 
-        try { src.stop(); } catch(e) {}
+        try { src.stop(); src.disconnect(); } catch(e) {}
     });
     activeAudioSources = [];
     preloadedEvents.clear();
 
     streamAudioElement.pause();
     
-    // CORREÇÃO: Mata o download pendente da Mix anterior!
-    if (!streamAudioElement.src.startsWith('data:')) {
-        streamAudioElement.src = silentTrack; 
-        streamAudioElement.load(); // ESTA LINHA CORTA A CONEXÃO HTTP IMEDIATAMENTE
-    }
+    // LIMPEZA BRUTA: Remove o src totalmente para matar o download na hora
+    streamAudioElement.removeAttribute('src'); 
+    streamAudioElement.load(); 
+    streamAudioElement.src = silentTrack; 
     
     currentStreamEvent = null;
     
