@@ -88,11 +88,21 @@ function updateChromeMediaHub(titleText) {
             artist: 'IV Radio Player',
             album: activeExpansionKey.toUpperCase() + ' EDITION'
         });
-        navigator.mediaSession.setActionHandler('seekbackward', null);
-        navigator.mediaSession.setActionHandler('seekforward', null);
-        navigator.mediaSession.setActionHandler('seekto', null);
-        navigator.mediaSession.setActionHandler('previoustrack', null);
-        navigator.mediaSession.setActionHandler('nexttrack', null);
+        
+        // A MÁGICA: Uma função que não faz nada!
+        const blockAction = () => { log("Ação bloqueada no widget do sistema."); };
+
+        // Isso desativa a barra de progresso (scrubber) e deixa-a cinza/intocável!
+        navigator.mediaSession.setActionHandler('seekto', blockAction);
+        navigator.mediaSession.setActionHandler('seekbackward', blockAction);
+        navigator.mediaSession.setActionHandler('seekforward', blockAction);
+        navigator.mediaSession.setActionHandler('previoustrack', blockAction);
+        navigator.mediaSession.setActionHandler('nexttrack', blockAction);
+
+        // Opcional: Se você quiser que o botão de "Pause" no fone de ouvido pare a rádio
+        navigator.mediaSession.setActionHandler('pause', () => {
+            if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
+        });
     }
 }
 
@@ -254,31 +264,32 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
 
     if (ev.type === 'stream') {
         currentStreamEvent = ev;
-        // isSystemSeeking removido
         streamAudioElement.src = ev.path;
-        streamAudioElement.muted = false; 
+        
+        // Silencia para esconder qualquer "lixo sonoro" enquanto ele procura o tempo certo
+        streamAudioElement.muted = true; 
         streamAudioElement.loop = false;
 
         const applyOffsetAndPlay = () => {
-            if (currentStreamEvent !== ev) return; 
+            if (currentStreamEvent !== ev) return;
             const offset = (getCurrentMonthMs() - ev.startMs) / 1000;
-            streamAudioElement.currentTime = Math.max(0, offset);
-            
-            // O SEGREDO DO SPOTIFY/YOUTUBE: 
-            // Só mandamos o Play quando o navegador confirmar que tem um pedaço na memória!
+
             const forcePlay = () => {
+                if (currentStreamEvent !== ev) return;
+                streamAudioElement.muted = false; // Devolve o som
                 streamAudioElement.play().catch(e => log('Autoplay stream bloqueado:', e.message));
-                streamAudioElement.removeEventListener('canplay', forcePlay);
+                streamAudioElement.removeEventListener('seeked', forcePlay);
             };
 
-            // readyState 3 (HAVE_FUTURE_DATA) significa: "Já baixei o suficiente para não travar agora"
-            if (streamAudioElement.readyState >= 3) { 
+            if (offset <= 0.5) {
+                // Se for o início exato da rádio, não precisamos esperar o salto
                 forcePlay();
             } else {
-                // Se a net estiver lenta, ele espera em silêncio carregar um bocado antes de arrancar
-                streamAudioElement.addEventListener('canplay', forcePlay);
+                // A CURA DA MIX: Ouve o evento 'seeked' antes de mandar o Play!
+                streamAudioElement.addEventListener('seeked', forcePlay);
+                streamAudioElement.currentTime = offset; // Isto aciona a busca e o evento acima
             }
-            
+
             updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
         };
 
