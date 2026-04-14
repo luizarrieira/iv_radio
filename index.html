@@ -96,47 +96,43 @@
     #coverAndTitle {
       display: flex;
       flex-direction: column; 
-      align-items: center; /* Mudado para center: fica muito melhor no celular! */
-      gap: 15px; 
+      align-items: flex-start; /* Alinha à esquerda */
+      gap: 10px; /* Reduzi um pouco para ficar mais compacto */
       margin-bottom: 50px; 
-      width: 90%; /* Ocupa bem a tela, deixando uma margem de respiro */
-      max-width: 340px; /* Limite para não ficar gigante no PC */
+      width: 90%; 
+      max-width: 340px; /* Mantém a referência de largura do carrossel */
+      margin-left: auto;
+      margin-right: auto; /* Estes dois mantêm o bloco centralizado em telas grandes, mas o conteúdo dentro dele à esquerda */
     }
 
     #activeColorLogo {
-      width: 100%; /* Preenche o espaço dado pelo coverAndTitle */
+      width: 100%;
       height: auto;
-      aspect-ratio: 2/1; /* Mantém a proporção exata do GTA (ex: 256x128) */
+      aspect-ratio: 2/1;
       object-fit: contain;
       opacity: 0;
-      transform: scale(0.95);
+      transform: scale(0.98); /* Escala inicial mais próxima do final para um efeito mais seco */
       pointer-events: none; 
       -webkit-user-drag: none;
     }
-    #activeColorLogo.visible {
+
+    /* Transição ultra rápida de 0.2s */
+    #activeColorLogo.visible, 
+    #radioNameText.visible {
       opacity: 1;
-      transform: scale(1);
-      transition: opacity 0.5s ease, transform 0.5s ease;
+      transform: scale(1) translateY(0);
+      transition: opacity 0.2s ease-out, transform 0.2s ease-out;
     }
 
     #radioNameText {
-      /* Texto elástico: mínimo 1rem, ideal 4.5vw, máximo 1.3rem */
       font-size: clamp(1rem, 4.5vw, 1.3rem); 
-      text-align: center; /* Centralizado com a imagem */
-      white-space: nowrap;
+      text-align: left; /* Alinhamento do texto à esquerda */
+      width: 100%;
       color: #ffaa00;
       text-transform: uppercase;
       letter-spacing: 2px;
-      text-shadow: 0 0 10px rgba(255,170,0,0.4);
-      padding-bottom: 0; 
       opacity: 0;
-      transform: translateY(-10px); /* Trocado de translateX para Y (animação de cima pra baixo) */
-    }
-    
-    #radioNameText.visible {
-      opacity: 1;
-      transform: translateY(0);
-      transition: opacity 0.5s ease, transform 0.5s ease;
+      transform: translateY(5px);
     }
 
     #radioNameText.fade-out {
@@ -384,20 +380,23 @@
       playTimeout = setTimeout(() => {
         const rad = radiosAtuais[activeIdx];
         
-        // 1. Atualizamos o texto e revelamos ele imediatamente
-        radioNameText.textContent = rad.name;
-        radioNameText.classList.add('visible');
+        // 1. Reset de visibilidade imediato para ambos
+        activeColorLogo.classList.remove('visible');
+        radioNameText.classList.remove('visible');
         
-        // 2. A MÁGICA DA CAPA: Preparamos o gatilho para só revelar quando a imagem nova estiver pronta!
+        // 2. Prepara o conteúdo (ainda invisível)
+        radioNameText.textContent = rad.name;
+
+        // 3. A Sincronização: Só mostra ambos quando a imagem carregar
         activeColorLogo.onload = () => {
+            // Agora os dois aparecem juntos com o fade de 0.2s
             activeColorLogo.classList.add('visible');
-            activeColorLogo.onload = null; // Limpa o evento para não acumular lixo na memória
+            radioNameText.classList.add('visible');
+            activeColorLogo.onload = null;
         };
         
-        // 3. Ao mudar o src, o navegador baixa a imagem nova e depois dispara o onload acima
         activeColorLogo.src = rad.imgCol;
         
-        // Inicia o motor de áudio
         if(window.__RADIO && window.__RADIO.startRadio) {
           window.__RADIO.startRadio(currentExpansion, rad.key);
         }
