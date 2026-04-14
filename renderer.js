@@ -80,26 +80,6 @@ function getCurrentMonthMs() {
     return now.getTime() - startOfMonth.getTime();
 }
 
-/* =================== O Segurança (Anti-Seek Guard) =================== */
-streamAudioElement.addEventListener('seeked', () => {
-    if (isSystemSeeking) {
-        isSystemSeeking = false;
-        return;
-    }
-    if (currentStreamEvent && !streamAudioElement.src.startsWith('data:')) {
-        const correctOffset = (getCurrentMonthMs() - currentStreamEvent.startMs) / 1000;
-        
-        // A CURA DA GAGUEIRA: Tolerância de 2 segundos!
-        // O navegador faz micro-ajustes na descompressão do OGG. 
-        // Se a diferença for minúscula, deixamos passar para não travar a música.
-        if (Math.abs(streamAudioElement.currentTime - correctOffset) > 2) {
-            log("Tentativa de avanço bloqueada pelo Sistema Anti-Seek!");
-            isSystemSeeking = true;
-            streamAudioElement.currentTime = Math.max(0, correctOffset);
-        }
-    }
-});
-
 /* =================== Personalizar Widget Media (Chrome/iOS) =================== */
 function updateChromeMediaHub(titleText) {
     if ('mediaSession' in navigator) {
@@ -274,17 +254,31 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
 
     if (ev.type === 'stream') {
         currentStreamEvent = ev;
-        isSystemSeeking = true;
+        // isSystemSeeking removido
         streamAudioElement.src = ev.path;
         streamAudioElement.muted = false; 
         streamAudioElement.loop = false;
 
-        // Espera o arquivo gigante ter a "cabeça" lida pelo navegador antes de saltar o tempo!
         const applyOffsetAndPlay = () => {
-            if (currentStreamEvent !== ev) return; // Se já mudou de rádio, aborta
+            if (currentStreamEvent !== ev) return; 
             const offset = (getCurrentMonthMs() - ev.startMs) / 1000;
             streamAudioElement.currentTime = Math.max(0, offset);
-            streamAudioElement.play().catch(e => log('Autoplay stream bloqueado:', e.message));
+            
+            // O SEGREDO DO SPOTIFY/YOUTUBE: 
+            // Só mandamos o Play quando o navegador confirmar que tem um pedaço na memória!
+            const forcePlay = () => {
+                streamAudioElement.play().catch(e => log('Autoplay stream bloqueado:', e.message));
+                streamAudioElement.removeEventListener('canplay', forcePlay);
+            };
+
+            // readyState 3 (HAVE_FUTURE_DATA) significa: "Já baixei o suficiente para não travar agora"
+            if (streamAudioElement.readyState >= 3) { 
+                forcePlay();
+            } else {
+                // Se a net estiver lenta, ele espera em silêncio carregar um bocado antes de arrancar
+                streamAudioElement.addEventListener('canplay', forcePlay);
+            }
+            
             updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
         };
 
