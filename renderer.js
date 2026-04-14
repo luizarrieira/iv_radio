@@ -87,10 +87,16 @@ streamAudioElement.addEventListener('seeked', () => {
         return;
     }
     if (currentStreamEvent && !streamAudioElement.src.startsWith('data:')) {
-        log("Tentativa de avanço bloqueada pelo Sistema Anti-Seek!");
         const correctOffset = (getCurrentMonthMs() - currentStreamEvent.startMs) / 1000;
-        isSystemSeeking = true;
-        streamAudioElement.currentTime = Math.max(0, correctOffset);
+        
+        // A CURA DA GAGUEIRA: Tolerância de 2 segundos!
+        // O navegador faz micro-ajustes na descompressão do OGG. 
+        // Se a diferença for minúscula, deixamos passar para não travar a música.
+        if (Math.abs(streamAudioElement.currentTime - correctOffset) > 2) {
+            log("Tentativa de avanço bloqueada pelo Sistema Anti-Seek!");
+            isSystemSeeking = true;
+            streamAudioElement.currentTime = Math.max(0, correctOffset);
+        }
     }
 });
 
@@ -268,16 +274,25 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
 
     if (ev.type === 'stream') {
         currentStreamEvent = ev;
-        const offset = (getCurrentMonthMs() - ev.startMs) / 1000;
-        
         isSystemSeeking = true;
         streamAudioElement.src = ev.path;
         streamAudioElement.muted = false; 
         streamAudioElement.loop = false;
-        streamAudioElement.currentTime = Math.max(0, offset);
-        
-        streamAudioElement.play().catch(e => log('Autoplay stream bloqueado:', e.message));
-        updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
+
+        // Espera o arquivo gigante ter a "cabeça" lida pelo navegador antes de saltar o tempo!
+        const applyOffsetAndPlay = () => {
+            if (currentStreamEvent !== ev) return; // Se já mudou de rádio, aborta
+            const offset = (getCurrentMonthMs() - ev.startMs) / 1000;
+            streamAudioElement.currentTime = Math.max(0, offset);
+            streamAudioElement.play().catch(e => log('Autoplay stream bloqueado:', e.message));
+            updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
+        };
+
+        if (streamAudioElement.readyState >= 1) { // HAVE_METADATA
+            applyOffsetAndPlay();
+        } else {
+            streamAudioElement.onloadedmetadata = applyOffsetAndPlay;
+        }
         return;
     }
 
@@ -348,12 +363,17 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
         s.onended = () => { activeAudioSources = activeAudioSources.filter(x => x !== s); };
     }
 
-    s.start(scheduledTime, startOffset);
-    
-    if (startOffset > 0) {
-        log(`🔄 HOT-SWAP: ${pathToPlay} (Avançado: ${startOffset.toFixed(2)}s)`);
-    } else {
-        log(`▶️ Agendado: ${pathToPlay}`);
+    try {
+        s.start(scheduledTime, startOffset);
+        if (startOffset > 0) {
+            log(`🔄 HOT-SWAP: ${pathToPlay} (Avançado: ${startOffset.toFixed(2)}s)`);
+        } else {
+            log(`▶️ Agendado: ${pathToPlay}`);
+        }
+    } catch (err) {
+        log(`⚠️ Erro ao tocar (offset além do limite?): ${pathToPlay}`);
+        // Se a locução falhar a tocar, forçamos o encerramento dela para o volume subir!
+        if (ev.type === 'voiceover') onNarrationEnd(audioCtx.currentTime); 
     }
 }
 
@@ -479,6 +499,8 @@ function stopRadio() {
     started = false; 
 
     activeAudioSources.forEach(src => {
+        // A CURA: Mata o gatilho para o "onended" não vazar para a rádio seguinte!
+        src.onended = null; 
         try { src.stop(); } catch(e) {}
     });
     activeAudioSources = [];
