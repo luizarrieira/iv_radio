@@ -383,12 +383,21 @@
       clearTimeout(playTimeout);
       playTimeout = setTimeout(() => {
         const rad = radiosAtuais[activeIdx];
-        activeColorLogo.src = rad.imgCol;
-        radioNameText.textContent = rad.name;
         
-        activeColorLogo.classList.add('visible');
+        // 1. Atualizamos o texto e revelamos ele imediatamente
+        radioNameText.textContent = rad.name;
         radioNameText.classList.add('visible');
         
+        // 2. A MÁGICA DA CAPA: Preparamos o gatilho para só revelar quando a imagem nova estiver pronta!
+        activeColorLogo.onload = () => {
+            activeColorLogo.classList.add('visible');
+            activeColorLogo.onload = null; // Limpa o evento para não acumular lixo na memória
+        };
+        
+        // 3. Ao mudar o src, o navegador baixa a imagem nova e depois dispara o onload acima
+        activeColorLogo.src = rad.imgCol;
+        
+        // Inicia o motor de áudio
         if(window.__RADIO && window.__RADIO.startRadio) {
           window.__RADIO.startRadio(currentExpansion, rad.key);
         }
