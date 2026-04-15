@@ -1,4 +1,4 @@
-// renderer.js — Versão Limpa e Estável
+// renderer.js — Versão Final AAA: Correção de Race Condition e iOS Background Limpo
 
 /* =================== Init Data Check =================== */
 const WEATHER_LIMITS = window.GERAL_DATA ? window.GERAL_DATA.weatherLimits : { cloud:11, fog:12, rain:11, sun:12, wind:11 };
@@ -13,6 +13,7 @@ const DUCK_UP_TIME = 0.1;
 
 /* =================== Gerador de Silêncio Real =================== */
 function gerarSilencio10Segundos() {
+    // CORREÇÃO: Mudado para 16-bits! O zero agora significa Silêncio Absoluto.
     const sampleRate = 8000, segundos = 10, channels = 1, bps = 16;
     const blockAlign = channels * (bps / 8);
     const dataSize = sampleRate * segundos * blockAlign; 
@@ -47,6 +48,7 @@ const streamAudioElement = new Audio();
 streamAudioElement.crossOrigin = "anonymous";
 streamAudioElement.setAttribute('playsinline', ''); 
 streamAudioElement.setAttribute('webkit-playsinline', '');
+// Pré-carrega o silêncio logo à nascença!
 streamAudioElement.src = silentTrack; 
 streamAudioElement.style.display = 'none';
 document.body.appendChild(streamAudioElement);
@@ -64,6 +66,7 @@ let preloadedEvents = new Map();
 let currentTimeline = [];
 
 let currentStreamEvent = null; 
+let isSystemSeeking = false; 
 let iosUnlocked = false;
 
 /* =================== Utils & Relógio Mestre =================== */
@@ -77,7 +80,21 @@ function getCurrentMonthMs() {
     return now.getTime() - startOfMonth.getTime();
 }
 
-/* =================== Personalizar Widget Media =================== */
+/* =================== O Segurança (Anti-Seek Guard) =================== */
+streamAudioElement.addEventListener('seeked', () => {
+    if (isSystemSeeking) {
+        isSystemSeeking = false;
+        return;
+    }
+    if (currentStreamEvent && !streamAudioElement.src.startsWith('data:')) {
+        log("Tentativa de avanço bloqueada pelo Sistema Anti-Seek!");
+        const correctOffset = (getCurrentMonthMs() - currentStreamEvent.startMs) / 1000;
+        isSystemSeeking = true;
+        streamAudioElement.currentTime = Math.max(0, correctOffset);
+    }
+});
+
+/* =================== Personalizar Widget Media (Chrome/iOS) =================== */
 function updateChromeMediaHub(titleText) {
     if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -85,13 +102,11 @@ function updateChromeMediaHub(titleText) {
             artist: 'IV Radio Player',
             album: activeExpansionKey.toUpperCase() + ' EDITION'
         });
-        
-        const blockAction = () => {}; 
-        navigator.mediaSession.setActionHandler('seekto', blockAction);
-        navigator.mediaSession.setActionHandler('seekbackward', blockAction);
-        navigator.mediaSession.setActionHandler('seekforward', blockAction);
-        navigator.mediaSession.setActionHandler('previoustrack', blockAction);
-        navigator.mediaSession.setActionHandler('nexttrack', blockAction);
+        navigator.mediaSession.setActionHandler('seekbackward', null);
+        navigator.mediaSession.setActionHandler('seekforward', null);
+        navigator.mediaSession.setActionHandler('seekto', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+        navigator.mediaSession.setActionHandler('nexttrack', null);
     }
 }
 
@@ -100,6 +115,7 @@ function unlockAudioForiOS() {
     if (iosUnlocked) return;
     if (audioCtx.state !== 'running') audioCtx.resume().catch(()=>{});
 
+    // Como já não removemos o SRC destrutivamente, este play vai funcionar perfeito!
     if (!streamAudioElement.src.startsWith('data:')) {
         streamAudioElement.src = silentTrack;
     }
@@ -108,7 +124,7 @@ function unlockAudioForiOS() {
     
     streamAudioElement.play().then(() => {
         iosUnlocked = true;
-        log("🍏 iOS Audio Desbloqueado com sucesso!");
+        log("🍏 iOS Audio Desbloqueado com sucesso (Widget Ativo)!");
     }).catch(e => log('Desbloqueio aguardando interação.'));
 
     ['touchstart', 'touchend', 'click'].forEach(evt => document.removeEventListener(evt, unlockAudioForiOS));
@@ -119,20 +135,25 @@ function unlockAudioForiOS() {
 async function loadTimeline(expansionKey, radioKey) {
     let targetExpansion = expansionKey;
 
+    // ==== O ROTEADOR DINÂMICO ====
+    // Vai ler diretamente ao station.js! Se a rádio tiver um "aliasFrom", ele muda a rota.
     const radioData = window.STATION_DATA.PROGRAMACOES[expansionKey]?.[radioKey];
+    
     if (radioData && radioData.aliasFrom) {
         targetExpansion = radioData.aliasFrom;
+        log(`🔀 Roteamento Dinâmico: Puxando ${radioKey} diretamente da expansão ${targetExpansion.toUpperCase()}.`);
     }
+    // =============================
 
     const fileName = radioKey.replace('radio_', 'prog_') + '.json';
     const url = `programacoes_mensais/${targetExpansion}/${fileName}`;
     
     try {
         const resp = await fetch(url);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} - Não encontrado em: ${url}`);
         currentTimeline = await resp.json();
     } catch(e) {
-        console.error("Erro ao carregar timeline:", e.message);
+        console.error("Erro CRÍTICO ao carregar timeline:", e.message);
         currentTimeline = [];
     }
 }
@@ -150,7 +171,7 @@ async function getAudioBuffer(filePath, limparDaMemoria = false) {
         const ab = await resp.arrayBuffer();
         const buf = await audioCtx.decodeAudioData(ab);
         audioBufferCache.set(filePath, buf);
-        if (audioBufferCache.size > 40) { 
+        if (audioBufferCache.size > 20) { 
             const oldestKey = audioBufferCache.keys().next().value;
             audioBufferCache.delete(oldestKey);
         }
@@ -183,11 +204,13 @@ function pickWeatherFile(condition){
     return getW('SUN', L.sun);
 }
 
-/* =================== Motores de Reprodução =================== */
+/* =================== Motores de Reprodução (Agendamento Físico) =================== */
 function onNarrationStart(scheduledTime = null){
     if(!started) return;
     activeNarrationsCount++;
     const triggerTime = scheduledTime !== null ? Math.max(audioCtx.currentTime, scheduledTime) : audioCtx.currentTime;
+    
+    // Transição suave exponencial. Ignora âncoras e não polui o futuro!
     musicGain.gain.setTargetAtTime(DUCK_TARGET, triggerTime, DUCK_DOWN_TIME);
 }
 
@@ -196,6 +219,8 @@ function onNarrationEnd(scheduledTime = null){
     activeNarrationsCount = Math.max(0, activeNarrationsCount-1);
     if(activeNarrationsCount === 0){
         const triggerTime = scheduledTime !== null ? Math.max(audioCtx.currentTime, scheduledTime) : audioCtx.currentTime;
+        
+        // Só volta ao volume normal de forma suave e contínua
         musicGain.gain.setTargetAtTime(1.0, triggerTime, DUCK_UP_TIME);
     }
 }
@@ -241,26 +266,18 @@ async function preloadEvent(ev) {
 async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = null) {
     if (!started || currentSessionId !== mySession) return;
 
-    // VERSÃO ESTÁVEL DO STREAMING (Simples e Direta)
     if (ev.type === 'stream') {
         currentStreamEvent = ev;
-        streamAudioElement.src = ev.path;
-        streamAudioElement.loop = false;
-        
         const offset = (getCurrentMonthMs() - ev.startMs) / 1000;
         
-        const playStream = () => {
-            if (currentStreamEvent !== ev) return;
-            if (offset > 0) streamAudioElement.currentTime = offset;
-            streamAudioElement.play().catch(e => log('Stream autoplay bloqueado:', e));
-            updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
-        };
-
-        if (streamAudioElement.readyState >= 1) { 
-            playStream();
-        } else {
-            streamAudioElement.onloadedmetadata = playStream;
-        }
+        isSystemSeeking = true;
+        streamAudioElement.src = ev.path;
+        streamAudioElement.muted = false; 
+        streamAudioElement.loop = false;
+        streamAudioElement.currentTime = Math.max(0, offset);
+        
+        streamAudioElement.play().catch(e => log('Autoplay stream bloqueado:', e.message));
+        updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
         return;
     }
 
@@ -284,9 +301,10 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
     if (!buf || !started || currentSessionId !== mySession) return;
 
     if (audioCtx.state !== 'running') {
-        audioCtx.resume().catch(e => log('Erro ao acordar placa:', e));
+        audioCtx.resume().catch(e => log('Erro ao acordar placa de som:', e));
     }
     
+    // A CORREÇÃO: Só garante o volume no máximo se não houver locuções na agulha!
     if (activeNarrationsCount === 0) {
         musicGain.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
     }
@@ -330,16 +348,22 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
         s.onended = () => { activeAudioSources = activeAudioSources.filter(x => x !== s); };
     }
 
-    try {
-        s.start(scheduledTime, startOffset);
-    } catch (err) {
-        if (ev.type === 'voiceover') onNarrationEnd(audioCtx.currentTime); 
+    s.start(scheduledTime, startOffset);
+    
+    if (startOffset > 0) {
+        log(`🔄 HOT-SWAP: ${pathToPlay} (Avançado: ${startOffset.toFixed(2)}s)`);
+    } else {
+        log(`▶️ Agendado: ${pathToPlay}`);
     }
 }
 
 async function radioLoop(mySession) {
+    log(`A sintonizar Rádio (${activeExpansionKey} -> ${activeRadioKey})...`);
     await loadTimeline(activeExpansionKey, activeRadioKey);
-    if (currentTimeline.length === 0) return;
+    
+    if (currentTimeline.length === 0) {
+        return;
+    }
 
     let eventIndex = 0;
     let nowMs = getCurrentMonthMs();
@@ -375,12 +399,15 @@ async function radioLoop(mySession) {
     async function radarTick() {
         if (!started || currentSessionId !== mySession) return;
         
-        if (audioCtx.state !== 'running') audioCtx.resume().catch(()=>{});
+        if (audioCtx.state !== 'running') {
+            audioCtx.resume().catch(()=>{});
+        }
 
         nowMs = getCurrentMonthMs();
 
         if (currentStreamEvent && currentStreamEvent.endMs <= nowMs) {
             if (!streamAudioElement.paused && !streamAudioElement.src.startsWith('data:')) {
+                log(`🛑 Guilhotina: Encerrando stream.`);
                 streamAudioElement.pause();
             }
             currentStreamEvent = null;
@@ -398,7 +425,9 @@ async function radioLoop(mySession) {
 
         while (eventIndex < currentTimeline.length && currentTimeline[eventIndex].startMs - nowMs <= 15000) {
             const ev = currentTimeline[eventIndex];
-            if (ev.endMs > nowMs) executeEvent(ev, mySession);
+            if (ev.endMs > nowMs) { 
+                executeEvent(ev, mySession);
+            }
             preloadedEvents.delete(eventIndex); 
             eventIndex++;
         }
@@ -435,7 +464,10 @@ async function startRadio(expansionKey, radioKey){
     
     unlockAudioForiOS();
     
-    if(audioCtx.state !== 'running') audioCtx.resume().catch(()=>{});
+    // CORREÇÃO: Removido o 'await'. Não travamos mais o navegador se o Safari hesitar!
+    if(audioCtx.state !== 'running') {
+        audioCtx.resume().catch(()=>{});
+    }
     
     radioLoop(mySession).catch(e => {
         if(currentSessionId === mySession) started = false;
@@ -443,18 +475,19 @@ async function startRadio(expansionKey, radioKey){
 }
 
 function stopRadio() {
+    log('A parar rádio atual...');
     started = false; 
 
     activeAudioSources.forEach(src => {
-        src.onended = null; 
-        try { src.stop(); src.disconnect(); } catch(e) {}
+        try { src.stop(); } catch(e) {}
     });
     activeAudioSources = [];
     preloadedEvents.clear();
 
     streamAudioElement.pause();
     
-    // RETORNADO AO ORIGINAL SEGURO: Sem "removeAttribute" quebrando o áudio do iOS
+    // CORREÇÃO: Não removemos mais o SRC destrutivamente!
+    // Apenas regressamos à segurança do silêncio se não estivermos já nele.
     if (!streamAudioElement.src.startsWith('data:')) {
         streamAudioElement.src = silentTrack; 
     }
@@ -470,4 +503,3 @@ function stopRadio() {
 window.__RADIO = window.__RADIO || {};
 window.__RADIO.startRadio = startRadio;
 window.__RADIO.stopRadio = stopRadio;
-window.__RADIO.unlock = unlockAudioForiOS;
