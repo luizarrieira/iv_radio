@@ -96,43 +96,43 @@
     #coverAndTitle {
       display: flex;
       flex-direction: column; 
-      align-items: flex-start; /* Alinha à esquerda */
-      gap: 10px; /* Reduzi um pouco para ficar mais compacto */
+      align-items: flex-start; 
+      gap: 15px; 
       margin-bottom: 50px; 
-      width: 90%; 
-      max-width: 340px; /* Mantém a referência de largura do carrossel */
-      margin-left: auto;
-      margin-right: auto; /* Estes dois mantêm o bloco centralizado em telas grandes, mas o conteúdo dentro dele à esquerda */
+      width: 100%;
+      max-width: 382px; 
     }
 
     #activeColorLogo {
-      width: 100%;
-      height: auto;
-      aspect-ratio: 2/1;
+      width: 256px;
+      height: 128px;
       object-fit: contain;
       opacity: 0;
-      transform: scale(0.98); /* Escala inicial mais próxima do final para um efeito mais seco */
+      transform: scale(0.95);
       pointer-events: none; 
       -webkit-user-drag: none;
     }
-
-    /* Transição ultra rápida de 0.2s */
-    #activeColorLogo.visible, 
-    #radioNameText.visible {
+    #activeColorLogo.visible {
       opacity: 1;
-      transform: scale(1) translateY(0);
-      transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+      transform: scale(1);
+      transition: opacity 0.5s ease, transform 0.5s ease;
     }
 
     #radioNameText {
-      font-size: clamp(1rem, 4.5vw, 1.3rem); 
-      text-align: left; /* Alinhamento do texto à esquerda */
-      width: 100%;
+      font-size: 1.1rem;
+      white-space: nowrap;
       color: #ffaa00;
       text-transform: uppercase;
       letter-spacing: 2px;
+      text-shadow: 0 0 10px rgba(255,170,0,0.4);
+      padding-bottom: 0; 
       opacity: 0;
-      transform: translateY(5px);
+      transform: translateX(-10px);
+    }
+    #radioNameText.visible {
+      opacity: 1;
+      transform: translateX(0);
+      transition: opacity 0.5s ease, transform 0.5s ease;
     }
 
     #radioNameText.fade-out {
@@ -162,12 +162,10 @@
       position: absolute;
       top: 50%;
       left: 50%;
-      /* Aumentado de 128x64 para 160x80 */
-      width: 160px;
-      height: 80px;
-      /* As margens negativas precisam ser exatamente a metade do width/height para centralizar o eixo */
-      margin-left: -80px; 
-      margin-top: -40px;  
+      width: 128px;
+      height: 64px;
+      margin-left: -64px;
+      margin-top: -32px;  
       display: flex;
       align-items: center;
       justify-content: center;
@@ -175,8 +173,8 @@
     }
     
     .radio-card img {
-      width: 100%;
-      height: 100%;
+      width: 128px;
+      height: 64px;
       object-fit: contain;
       -webkit-user-drag: none;
     }
@@ -379,23 +377,11 @@
       clearTimeout(playTimeout);
       playTimeout = setTimeout(() => {
         const rad = radiosAtuais[activeIdx];
-        
-        // 1. Reset de visibilidade imediato para ambos
-        activeColorLogo.classList.remove('visible');
-        radioNameText.classList.remove('visible');
-        
-        // 2. Prepara o conteúdo (ainda invisível)
-        radioNameText.textContent = rad.name;
-
-        // 3. A Sincronização: Só mostra ambos quando a imagem carregar
-        activeColorLogo.onload = () => {
-            // Agora os dois aparecem juntos com o fade de 0.2s
-            activeColorLogo.classList.add('visible');
-            radioNameText.classList.add('visible');
-            activeColorLogo.onload = null;
-        };
-        
         activeColorLogo.src = rad.imgCol;
+        radioNameText.textContent = rad.name;
+        
+        activeColorLogo.classList.add('visible');
+        radioNameText.classList.add('visible');
         
         if(window.__RADIO && window.__RADIO.startRadio) {
           window.__RADIO.startRadio(currentExpansion, rad.key);
@@ -409,9 +395,6 @@
     // ----------------- EVENTOS DE INTERAÇÃO -----------------
     document.querySelectorAll('.btn-exp').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        // A MÁGICA DO AUTOPLAY: Destranca o áudio na hora, antes do delay da animação!
-        if(window.__RADIO && window.__RADIO.unlock) window.__RADIO.unlock();
-
         currentExpansion = e.target.getAttribute('data-exp');
         
         viewMenu.classList.remove('active');
