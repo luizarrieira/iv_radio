@@ -1,4 +1,4 @@
-// renderer.js — Versão Final AAA: Correção de Race Condition e iOS Background Limpo
+// renderer.js — Versão Final AAA: Sincronia Estrita Stream vs WebAudio
 
 /* =================== Init Data Check =================== */
 const WEATHER_LIMITS = window.GERAL_DATA ? window.GERAL_DATA.weatherLimits : { cloud:11, fog:12, rain:11, sun:12, wind:11 };
@@ -13,7 +13,6 @@ const DUCK_UP_TIME = 0.1;
 
 /* =================== Gerador de Silêncio Real =================== */
 function gerarSilencio10Segundos() {
-    // CORREÇÃO: Mudado para 16-bits! O zero agora significa Silêncio Absoluto.
     const sampleRate = 8000, segundos = 10, channels = 1, bps = 16;
     const blockAlign = channels * (bps / 8);
     const dataSize = sampleRate * segundos * blockAlign; 
@@ -48,7 +47,6 @@ const streamAudioElement = new Audio();
 streamAudioElement.crossOrigin = "anonymous";
 streamAudioElement.setAttribute('playsinline', ''); 
 streamAudioElement.setAttribute('webkit-playsinline', '');
-// Pré-carrega o silêncio logo à nascença!
 streamAudioElement.src = silentTrack; 
 streamAudioElement.style.display = 'none';
 document.body.appendChild(streamAudioElement);
@@ -115,7 +113,6 @@ function unlockAudioForiOS() {
     if (iosUnlocked) return;
     if (audioCtx.state !== 'running') audioCtx.resume().catch(()=>{});
 
-    // Como já não removemos o SRC destrutivamente, este play vai funcionar perfeito!
     if (!streamAudioElement.src.startsWith('data:')) {
         streamAudioElement.src = silentTrack;
     }
@@ -135,15 +132,12 @@ function unlockAudioForiOS() {
 async function loadTimeline(expansionKey, radioKey) {
     let targetExpansion = expansionKey;
 
-    // ==== O ROTEADOR DINÂMICO ====
-    // Vai ler diretamente ao station.js! Se a rádio tiver um "aliasFrom", ele muda a rota.
     const radioData = window.STATION_DATA.PROGRAMACOES[expansionKey]?.[radioKey];
     
     if (radioData && radioData.aliasFrom) {
         targetExpansion = radioData.aliasFrom;
         log(`🔀 Roteamento Dinâmico: Puxando ${radioKey} diretamente da expansão ${targetExpansion.toUpperCase()}.`);
     }
-    // =============================
 
     const fileName = radioKey.replace('radio_', 'prog_') + '.json';
     const url = `programacoes_mensais/${targetExpansion}/${fileName}`;
@@ -209,8 +203,6 @@ function onNarrationStart(scheduledTime = null){
     if(!started) return;
     activeNarrationsCount++;
     const triggerTime = scheduledTime !== null ? Math.max(audioCtx.currentTime, scheduledTime) : audioCtx.currentTime;
-    
-    // Transição suave exponencial. Ignora âncoras e não polui o futuro!
     musicGain.gain.setTargetAtTime(DUCK_TARGET, triggerTime, DUCK_DOWN_TIME);
 }
 
@@ -219,8 +211,6 @@ function onNarrationEnd(scheduledTime = null){
     activeNarrationsCount = Math.max(0, activeNarrationsCount-1);
     if(activeNarrationsCount === 0){
         const triggerTime = scheduledTime !== null ? Math.max(audioCtx.currentTime, scheduledTime) : audioCtx.currentTime;
-        
-        // Só volta ao volume normal de forma suave e contínua
         musicGain.gain.setTargetAtTime(1.0, triggerTime, DUCK_UP_TIME);
     }
 }
@@ -304,7 +294,6 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
         audioCtx.resume().catch(e => log('Erro ao acordar placa de som:', e));
     }
     
-    // A CORREÇÃO: Só garante o volume no máximo se não houver locuções na agulha!
     if (activeNarrationsCount === 0) {
         musicGain.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
     }
@@ -374,7 +363,10 @@ async function radioLoop(mySession) {
         if (ev.startMs <= nowMs && ev.endMs > nowMs) {
             hotSwapEvents.push(ev); 
         } else if (ev.startMs > nowMs && ev.startMs - nowMs <= 2000) {
-            hotSwapEvents.push(ev); 
+            // PROTEÇÃO DO HOTSWAP: Nunca executa Streams com antecedência
+            if (ev.type !== 'stream') {
+                hotSwapEvents.push(ev); 
+            }
         }
         if (ev.startMs > nowMs + 2000 && eventIndex === 0) {
             eventIndex = i;
@@ -406,7 +398,8 @@ async function radioLoop(mySession) {
         nowMs = getCurrentMonthMs();
 
         if (currentStreamEvent && currentStreamEvent.endMs <= nowMs) {
-            if (!streamAudioElement.paused && !streamAudioElement.src.startsWith('data:')) {
+            const nextEvent = currentTimeline.find(ev => ev.type === 'stream' && ev.startMs <= nowMs && ev.endMs > nowMs);
+            if (!nextEvent) {
                 log(`🛑 Guilhotina: Encerrando stream.`);
                 streamAudioElement.pause();
             }
@@ -423,8 +416,20 @@ async function radioLoop(mySession) {
             } else { break; }
         }
 
-        while (eventIndex < currentTimeline.length && currentTimeline[eventIndex].startMs - nowMs <= 15000) {
+        // LÓGICA DE AGENDAMENTO REFINADA E BLINDADA
+        while (eventIndex < currentTimeline.length) {
             const ev = currentTimeline[eventIndex];
+            const timeUntilStart = ev.startMs - nowMs;
+
+            // Limite do Look-ahead do Radar
+            if (timeUntilStart > 15000) break;
+
+            // === A TRAVA DO STREAM ===
+            // Impede a execução precoce da tag de <audio> que não possui scheduler futuro.
+            if (ev.type === 'stream' && timeUntilStart > 0) {
+                break; // O loop para imediatamente aqui e espera o tempo exato chegar
+            }
+
             if (ev.endMs > nowMs) { 
                 executeEvent(ev, mySession);
             }
@@ -464,7 +469,6 @@ async function startRadio(expansionKey, radioKey){
     
     unlockAudioForiOS();
     
-    // CORREÇÃO: Removido o 'await'. Não travamos mais o navegador se o Safari hesitar!
     if(audioCtx.state !== 'running') {
         audioCtx.resume().catch(()=>{});
     }
@@ -486,8 +490,6 @@ function stopRadio() {
 
     streamAudioElement.pause();
     
-    // CORREÇÃO: Não removemos mais o SRC destrutivamente!
-    // Apenas regressamos à segurança do silêncio se não estivermos já nele.
     if (!streamAudioElement.src.startsWith('data:')) {
         streamAudioElement.src = silentTrack; 
     }
