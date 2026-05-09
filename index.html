@@ -243,37 +243,45 @@
     let staticSource = null;
     let staticGain = null;
 
-    // Desbloqueia o motor de som no iOS ao primeiro toque
-    const unlockUI = () => { if(uiAudioCtx.state !== 'running') uiAudioCtx.resume(); };
-    ['click', 'touchstart'].forEach(e => document.addEventListener(e, unlockUI, {once:true}));
+    // Força o iOS a manter o motor de som de interface acordado
+    function forceWakeUpAudio() {
+        if (uiAudioCtx.state !== 'running') uiAudioCtx.resume();
+        const osc = uiAudioCtx.createOscillator();
+        const gain = uiAudioCtx.createGain();
+        gain.gain.value = 0; // Inaudível
+        osc.connect(gain);
+        gain.connect(uiAudioCtx.destination);
+        osc.start();
+        osc.stop(uiAudioCtx.currentTime + 0.01);
+    }
+    ['click', 'touchstart'].forEach(e => document.addEventListener(e, forceWakeUpAudio, {once:true}));
 
-    // Pré-carrega os arquivos na memória do navegador
     fetch('RADIO_CLICK.ogg').then(r=>r.arrayBuffer()).then(ab=>uiAudioCtx.decodeAudioData(ab)).then(b=>clickBuffer=b).catch(()=>{});
     fetch('RADIO_STATIC_LOOP.ogg').then(r=>r.arrayBuffer()).then(ab=>uiAudioCtx.decodeAudioData(ab)).then(b=>staticBuffer=b).catch(()=>{});
 
     function playUIClick() {
-        if (!clickBuffer || uiAudioCtx.state !== 'running') return;
+        forceWakeUpAudio();
+        if (!clickBuffer) return;
         const src = uiAudioCtx.createBufferSource();
         src.buffer = clickBuffer;
-        
         const gain = uiAudioCtx.createGain();
-        gain.gain.value = 2.0; // DOBRO do volume!
-        
+        gain.gain.value = 3.0; // Volume TRIPLO para o clique
         src.connect(gain);
         gain.connect(uiAudioCtx.destination);
         src.start();
     }
 
     function playUIStatic() {
-        if (!staticBuffer || uiAudioCtx.state !== 'running') return;
-        if (staticSource) stopUIStatic(true); // Corta se já tiver um tocando
+        forceWakeUpAudio();
+        if (!staticBuffer) return;
+        if (staticSource) stopUIStatic(true); 
         
         staticSource = uiAudioCtx.createBufferSource();
         staticSource.buffer = staticBuffer;
         staticSource.loop = true;
         
         staticGain = uiAudioCtx.createGain();
-        staticGain.gain.value = 0.4; // Volume inicial da estática
+        staticGain.gain.value = 0.4; 
         
         staticSource.connect(staticGain);
         staticGain.connect(uiAudioCtx.destination);
@@ -294,12 +302,10 @@
             return;
         }
 
-        // Crossfade nativo da placa de som (Funciona 100% no iOS)
         const now = uiAudioCtx.currentTime;
         gainToFade.gain.cancelScheduledValues(now);
         gainToFade.gain.setValueAtTime(gainToFade.gain.value, now);
-        gainToFade.gain.linearRampToValueAtTime(0.001, now + 1.0); // Esvanece em 1 segundo
-        
+        gainToFade.gain.linearRampToValueAtTime(0.001, now + 1.0); 
         setTimeout(() => { try { srcToStop.stop(); } catch(e){} }, 1000);
     }
 
@@ -353,7 +359,6 @@
     const activeColorLogo = document.getElementById('activeColorLogo');
     const radioNameText = document.getElementById('radioNameText');
 
-    // ----------------- VISIBILIDADE DO CARROSSEL -----------------
     function wakeUpCarousel() {
       carouselContainer.classList.remove('hidden-carousel');
       radioNameText.classList.remove('fade-out'); 
@@ -365,10 +370,8 @@
       }, 5000); 
     }
 
-    // ----------------- RENDERIZAR CARROSSEL -----------------
     function buildCarousel() {
       const day = new Date().getDate(); 
-
       radiosAtuais = todasAsRadios.filter(r => {
           const validExpansion = r.expansoes.includes(currentExpansion);
           const validDate = r.isAvailable ? r.isAvailable(currentExpansion, day) : true;
@@ -394,8 +397,8 @@
       });
     }
 
-    // ----------------- LÓGICA DE LOOP & VISUAL -----------------
-    function updateCarousel() {
+    // A flag isFirstLoad impede o som do clique na hora de abrir o menu
+    function updateCarousel(isFirstLoad = false) {
       wakeUpCarousel(); 
 
       const N = radiosAtuais.length;
@@ -406,8 +409,7 @@
       activeColorLogo.classList.remove('visible');
       radioNameText.classList.remove('visible');
 
-      // Toca o som de clique 
-      playUIClick();
+      if (!isFirstLoad) playUIClick();
 
       document.querySelectorAll('.radio-card').forEach((el, i) => {
         let diff = i - activeIdx;
@@ -445,7 +447,6 @@
       playTimeout = setTimeout(() => {
         const rad = radiosAtuais[activeIdx];
         
-        // Pré-carrega a imagem colorida antes de injetar na tela (Evita o piscar)
         const imgLoader = new Image();
         imgLoader.onload = () => {
             activeColorLogo.src = rad.imgCol;
@@ -455,22 +456,17 @@
         };
         imgLoader.src = rad.imgCol;
         
-        // Verifica se a rádio confirmada é diferente da que está rodando
         if (currentlyPlayingKey !== rad.key) {
-            
-            // Inicia estática
             playUIStatic();
 
-            // Para a rádio antiga
             if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
             
-            // Inicia a nova rádio
             if(window.__RADIO && window.__RADIO.startRadio) {
               currentlyPlayingKey = rad.key;
               window.__RADIO.startRadio(currentExpansion, rad.key);
               
-              // Fade-out suave (O crossfade corta a música perfeitamente sem travar)
-              setTimeout(() => { stopUIStatic(false); }, 1000); 
+              // Aumentado para 2.5s para garantir que as músicas ogg tenham tempo de baixar antes da estática sumir
+              setTimeout(() => { stopUIStatic(false); }, 2500); 
             } else {
               stopUIStatic(true);
             }
@@ -484,15 +480,34 @@
     // ----------------- EVENTOS DE INTERAÇÃO -----------------
     document.querySelectorAll('.btn-exp').forEach(btn => {
       btn.addEventListener('click', (e) => {
+        forceWakeUpAudio(); // Acorda o iOS IMEDIATAMENTE
+        
         currentExpansion = e.target.getAttribute('data-exp');
         
         viewMenu.classList.remove('active');
         viewPlayer.classList.add('active');
         
-        currentlyPlayingKey = null; 
         buildCarousel();
         currentIndex = 0; 
-        updateCarousel(); 
+
+        // SALVAÇÃO DO IPHONE: Inicia a primeira rádio sincronamente com o clique do botão
+        const firstRad = radiosAtuais[0];
+        if(window.__RADIO && window.__RADIO.startRadio) {
+            currentlyPlayingKey = firstRad.key; 
+            window.__RADIO.startRadio(currentExpansion, firstRad.key);
+        }
+
+        const imgLoader = new Image();
+        imgLoader.onload = () => {
+            activeColorLogo.src = firstRad.imgCol;
+            radioNameText.textContent = firstRad.name;
+            activeColorLogo.classList.add('visible');
+            radioNameText.classList.add('visible');
+        };
+        imgLoader.src = firstRad.imgCol;
+
+        // Chama o carousel visual passando true para não disparar clique sonoro e estática na entrada
+        updateCarousel(true); 
       });
     });
 
@@ -504,7 +519,7 @@
       if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
       
       currentlyPlayingKey = null; 
-      stopUIStatic(true); // Corta a seco se o cara voltar pro menu
+      stopUIStatic(true); 
 
       viewPlayer.classList.remove('active');
       viewMenu.classList.add('active');
@@ -512,6 +527,7 @@
 
     let lastWheelTime = 0;
     viewPlayer.addEventListener('wheel', (e) => {
+      forceWakeUpAudio();
       if (e.target.closest('#logArea')) return; 
 
       e.preventDefault(); 
@@ -525,6 +541,7 @@
     let isDragging = false, startX = 0, startY = 0;
 
     const dragStart = (e) => { 
+      forceWakeUpAudio();
       if (e.target.closest('#logArea') || e.target.closest('#btnBack')) return;
       isDragging = true; 
       const touch = e.type.includes('mouse') ? e : e.changedTouches[0];
