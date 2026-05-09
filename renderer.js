@@ -278,17 +278,14 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
         const offset = (getCurrentMonthMs() - ev.startMs) / 1000;
         isSystemSeeking = true;
 
-        // Limpa instância antiga se existir
         if (hlsInstance) {
             hlsInstance.destroy();
             hlsInstance = null;
         }
 
-        // Detecta HLS (.m3u8) vs Nativo (.ogg longo)
         if (ev.path.endsWith('.m3u8') && window.Hls && window.Hls.isSupported()) {
             log(`🌐 Iniciando HLS Stream: ${ev.path}`);
             
-            // startPosition define de onde o arquivo deve começar a ser baixado/tocado
             hlsInstance = new window.Hls({ startPosition: Math.max(0, offset) });
             hlsInstance.loadSource(ev.path);
             hlsInstance.attachMedia(streamAudioElement);
@@ -296,16 +293,19 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
             hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, function() {
                 streamAudioElement.muted = false;
                 streamAudioElement.loop = false;
-                streamAudioElement.play().catch(e => log('Autoplay HLS bloqueado:', e.message));
+                streamAudioElement.play()
+                    .then(() => { window.dispatchEvent(new CustomEvent('radio-ready')); }) // SINAL HLS
+                    .catch(e => log('Autoplay HLS bloqueado:', e.message));
             });
         } else {
-            // Fallback para Safari/iOS (lê HLS nativo) ou arquivos normais grandes
             log(`🍏 Iniciando Stream Nativo: ${ev.path}`);
             streamAudioElement.src = ev.path;
             streamAudioElement.muted = false; 
             streamAudioElement.loop = false;
             streamAudioElement.currentTime = Math.max(0, offset);
-            streamAudioElement.play().catch(e => log('Autoplay stream bloqueado:', e.message));
+            streamAudioElement.play()
+                .then(() => { window.dispatchEvent(new CustomEvent('radio-ready')); }) // SINAL NATIVO
+                .catch(e => log('Autoplay stream bloqueado:', e.message));
         }
 
         updateChromeMediaHub(activeRadioKey.replace('radio_', '').toUpperCase().replace(/_/g, ' '));
@@ -359,6 +359,7 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
 
     if (ev.type === 'dynamic_weather') {
         playCenteredSlot(buf, ev.targetMs, startOffset, scheduledTime);
+        window.dispatchEvent(new CustomEvent('radio-ready')); // SINAL CLIMA
         return;
     }
 
@@ -379,6 +380,7 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
     }
 
     s.start(scheduledTime, startOffset);
+    window.dispatchEvent(new CustomEvent('radio-ready')); // SINAL OGG NORMAL
     
     if (startOffset > 0) {
         log(`🔄 HOT-SWAP: ${pathToPlay} (Avançado: ${startOffset.toFixed(2)}s)`);
@@ -443,7 +445,6 @@ async function radioLoop(mySession) {
                 log(`🛑 Guilhotina: Encerrando stream.`);
                 streamAudioElement.pause();
                 
-                // Limpa HLS da memória ao acabar o bloco
                 if (hlsInstance) {
                     hlsInstance.destroy();
                     hlsInstance = null;
@@ -532,7 +533,6 @@ function stopRadio() {
 
     streamAudioElement.pause();
     
-    // Mata qualquer processamento residual do HLS ao trocar de rádio
     if (hlsInstance) {
         hlsInstance.destroy();
         hlsInstance = null;
