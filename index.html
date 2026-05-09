@@ -265,7 +265,7 @@
         const src = uiAudioCtx.createBufferSource();
         src.buffer = clickBuffer;
         const gain = uiAudioCtx.createGain();
-        gain.gain.value = 3.0; // Volume TRIPLO para o clique
+        gain.gain.value = 4.0; // Aumentado para 400% para ser bem evidente
         src.connect(gain);
         gain.connect(uiAudioCtx.destination);
         src.start();
@@ -397,7 +397,6 @@
       });
     }
 
-    // A flag isFirstLoad impede o som do clique na hora de abrir o menu
     function updateCarousel(isFirstLoad = false) {
       wakeUpCarousel(); 
 
@@ -465,8 +464,21 @@
               currentlyPlayingKey = rad.key;
               window.__RADIO.startRadio(currentExpansion, rad.key);
               
-              // Aumentado para 2.5s para garantir que as músicas ogg tenham tempo de baixar antes da estática sumir
-              setTimeout(() => { stopUIStatic(false); }, 2500); 
+              // === ESTÁTICA INTELIGENTE ===
+              const stopStaticHandler = () => {
+                  stopUIStatic(false);
+                  window.removeEventListener('radio-ready', stopStaticHandler);
+                  clearTimeout(safetyTimeout); 
+              };
+
+              // Escuta o sinal do renderer.js
+              window.addEventListener('radio-ready', stopStaticHandler);
+
+              // Desliga sozinha se a rádio não avisar em 5 segundos (Backup)
+              const safetyTimeout = setTimeout(() => {
+                  stopStaticHandler();
+              }, 5000);
+
             } else {
               stopUIStatic(true);
             }
@@ -480,7 +492,7 @@
     // ----------------- EVENTOS DE INTERAÇÃO -----------------
     document.querySelectorAll('.btn-exp').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        forceWakeUpAudio(); // Acorda o iOS IMEDIATAMENTE
+        forceWakeUpAudio(); 
         
         currentExpansion = e.target.getAttribute('data-exp');
         
@@ -490,7 +502,6 @@
         buildCarousel();
         currentIndex = 0; 
 
-        // SALVAÇÃO DO IPHONE: Inicia a primeira rádio sincronamente com o clique do botão
         const firstRad = radiosAtuais[0];
         if(window.__RADIO && window.__RADIO.startRadio) {
             currentlyPlayingKey = firstRad.key; 
@@ -506,7 +517,6 @@
         };
         imgLoader.src = firstRad.imgCol;
 
-        // Chama o carousel visual passando true para não disparar clique sonoro e estática na entrada
         updateCarousel(true); 
       });
     });
