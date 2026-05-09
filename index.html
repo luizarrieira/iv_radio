@@ -120,7 +120,6 @@
       font-size: 1.1rem;
       white-space: nowrap;
       color: #ffaa00;
-      /* text-transform: uppercase; REMOVIDO PARA RESPEITAR O TEXTO ORIGINAL */
       letter-spacing: 2px;
       text-shadow: 0 0 10px rgba(255,170,0,0.4);
       padding-bottom: 0; 
@@ -237,14 +236,72 @@
       logArea.scrollTop = logArea.scrollHeight;
     };
 
-    // ----------------- SONS DA INTERFACE (Totalmente isolados do Motor da Rádio) -----------------
-    const uiClick = new Audio('RADIO_CLICK.ogg');
-    uiClick.volume = 1.0; // Volume dobrado conforme solicitado
+    // ----------------- SONS DA INTERFACE (Web Audio API Isolada) -----------------
+    const uiAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let clickBuffer = null;
+    let staticBuffer = null;
+    let staticSource = null;
+    let staticGain = null;
 
-    const uiStatic = new Audio('RADIO_STATIC_LOOP.ogg');
-    uiStatic.loop = true;
-    uiStatic.volume = 0.4;
-    let fadeStaticInterval = null; // Controle para o Fade-Out da Estática
+    // Desbloqueia o motor de som no iOS ao primeiro toque
+    const unlockUI = () => { if(uiAudioCtx.state !== 'running') uiAudioCtx.resume(); };
+    ['click', 'touchstart'].forEach(e => document.addEventListener(e, unlockUI, {once:true}));
+
+    // Pré-carrega os arquivos na memória do navegador
+    fetch('RADIO_CLICK.ogg').then(r=>r.arrayBuffer()).then(ab=>uiAudioCtx.decodeAudioData(ab)).then(b=>clickBuffer=b).catch(()=>{});
+    fetch('RADIO_STATIC_LOOP.ogg').then(r=>r.arrayBuffer()).then(ab=>uiAudioCtx.decodeAudioData(ab)).then(b=>staticBuffer=b).catch(()=>{});
+
+    function playUIClick() {
+        if (!clickBuffer || uiAudioCtx.state !== 'running') return;
+        const src = uiAudioCtx.createBufferSource();
+        src.buffer = clickBuffer;
+        
+        const gain = uiAudioCtx.createGain();
+        gain.gain.value = 2.0; // DOBRO do volume!
+        
+        src.connect(gain);
+        gain.connect(uiAudioCtx.destination);
+        src.start();
+    }
+
+    function playUIStatic() {
+        if (!staticBuffer || uiAudioCtx.state !== 'running') return;
+        if (staticSource) stopUIStatic(true); // Corta se já tiver um tocando
+        
+        staticSource = uiAudioCtx.createBufferSource();
+        staticSource.buffer = staticBuffer;
+        staticSource.loop = true;
+        
+        staticGain = uiAudioCtx.createGain();
+        staticGain.gain.value = 0.4; // Volume inicial da estática
+        
+        staticSource.connect(staticGain);
+        staticGain.connect(uiAudioCtx.destination);
+        staticSource.start();
+    }
+
+    function stopUIStatic(immediate = false) {
+        if (!staticSource || !staticGain) return;
+        
+        const srcToStop = staticSource;
+        const gainToFade = staticGain;
+        
+        staticSource = null;
+        staticGain = null;
+
+        if (immediate) {
+            try { srcToStop.stop(); } catch(e){}
+            return;
+        }
+
+        // Crossfade nativo da placa de som (Funciona 100% no iOS)
+        const now = uiAudioCtx.currentTime;
+        gainToFade.gain.cancelScheduledValues(now);
+        gainToFade.gain.setValueAtTime(gainToFade.gain.value, now);
+        gainToFade.gain.linearRampToValueAtTime(0.001, now + 1.0); // Esvanece em 1 segundo
+        
+        setTimeout(() => { try { srcToStop.stop(); } catch(e){} }, 1000);
+    }
 
     // ----------------- CONFIGURAÇÃO DAS RÁDIOS -----------------
     const todasAsRadios = [
@@ -288,7 +345,7 @@
     let currentIndex = 0; 
     let playTimeout = null;
     let carouselIdleTimeout = null;
-    let currentlyPlayingKey = null; // Memória de qual rádio está rodando no background
+    let currentlyPlayingKey = null; 
 
     const viewMenu = document.getElementById('viewMenu');
     const viewPlayer = document.getElementById('viewPlayer');
@@ -349,9 +406,8 @@
       activeColorLogo.classList.remove('visible');
       radioNameText.classList.remove('visible');
 
-      // Toca o som de clique independentemente da rádio estar tocando
-      uiClick.currentTime = 0;
-      uiClick.play().catch(e => {});
+      // Toca o som de clique 
+      playUIClick();
 
       document.querySelectorAll('.radio-card').forEach((el, i) => {
         let diff = i - activeIdx;
@@ -389,19 +445,21 @@
       playTimeout = setTimeout(() => {
         const rad = radiosAtuais[activeIdx];
         
-        // Atualiza a logo colorida e nome
-        activeColorLogo.src = rad.imgCol;
-        radioNameText.textContent = rad.name;
-        activeColorLogo.classList.add('visible');
-        radioNameText.classList.add('visible');
+        // Pré-carrega a imagem colorida antes de injetar na tela (Evita o piscar)
+        const imgLoader = new Image();
+        imgLoader.onload = () => {
+            activeColorLogo.src = rad.imgCol;
+            radioNameText.textContent = rad.name;
+            activeColorLogo.classList.add('visible');
+            radioNameText.classList.add('visible');
+        };
+        imgLoader.src = rad.imgCol;
         
         // Verifica se a rádio confirmada é diferente da que está rodando
         if (currentlyPlayingKey !== rad.key) {
             
-            // Garante que a estática está no volume certo e toca
-            clearInterval(fadeStaticInterval);
-            uiStatic.volume = 0.4;
-            uiStatic.play().catch(e => {});
+            // Inicia estática
+            playUIStatic();
 
             // Para a rádio antiga
             if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
@@ -411,22 +469,10 @@
               currentlyPlayingKey = rad.key;
               window.__RADIO.startRadio(currentExpansion, rad.key);
               
-              // Em vez de pausar a seco, faz um Crossfade (Fade-Out) na estática para suavizar
-              setTimeout(() => {
-                  fadeStaticInterval = setInterval(() => {
-                      if (uiStatic.volume > 0.05) {
-                          uiStatic.volume -= 0.05;
-                      } else {
-                          uiStatic.pause();
-                          uiStatic.currentTime = 0;
-                          uiStatic.volume = 0.4; // Reseta para a próxima troca
-                          clearInterval(fadeStaticInterval);
-                      }
-                  }, 50); // Diminui o volume a cada 50ms até zerar
-              }, 1000); // Espera 1 segundo (tempo de carregar a rádio) e começa a suavizar
+              // Fade-out suave (O crossfade corta a música perfeitamente sem travar)
+              setTimeout(() => { stopUIStatic(false); }, 1000); 
             } else {
-              uiStatic.pause();
-              uiStatic.currentTime = 0;
+              stopUIStatic(true);
             }
         }
       }, 1000);
@@ -454,13 +500,11 @@
       e.stopPropagation(); 
       clearTimeout(playTimeout);
       clearTimeout(carouselIdleTimeout);
-      clearInterval(fadeStaticInterval); // Mata o fade se estiver acontecendo
       
       if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
       
       currentlyPlayingKey = null; 
-      uiStatic.pause(); 
-      uiStatic.currentTime = 0;
+      stopUIStatic(true); // Corta a seco se o cara voltar pro menu
 
       viewPlayer.classList.remove('active');
       viewMenu.classList.add('active');
