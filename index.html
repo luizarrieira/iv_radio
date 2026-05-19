@@ -30,7 +30,7 @@
       justify-content: center;
       width: 100%;
       height: 100%;
-      animation: fadeIn 0.5s ease;
+      animation: fadeIn 0.3s ease;
     }
     .view.active { display: flex; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -102,18 +102,18 @@
     }
 
     #activeColorLogo {
-      width: 256px;
-      height: 128px;
+      width: 320px; /* Aumentado de 256px para 320px */
+      height: 160px; /* Aumentado de 128px para 160px */
       object-fit: contain;
       opacity: 0;
       transform: scale(0.95);
       pointer-events: none; 
       -webkit-user-drag: none;
+      transition: opacity 0.3s ease, transform 0.3s ease; 
     }
     #activeColorLogo.visible {
       opacity: 1;
       transform: scale(1);
-      transition: opacity 0.5s ease, transform 0.5s ease;
     }
 
     #radioNameText {
@@ -125,16 +125,14 @@
       padding-bottom: 0; 
       opacity: 0;
       transform: translateX(-10px);
+      transition: opacity 0.3s ease, transform 0.3s ease; 
     }
     #radioNameText.visible {
       opacity: 1;
       transform: translateX(0);
-      transition: opacity 0.5s ease, transform 0.5s ease;
     }
-
     #radioNameText.fade-out {
       opacity: 0 !important;
-      transition: opacity 1s ease; 
     }
 
     /* === CARROSSEL DAS RÁDIOS (Preto e Branco) === */
@@ -145,7 +143,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: opacity 1s ease;
+      transition: opacity 0.3s ease; 
       opacity: 1;
       -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 20%, black 80%, transparent 100%);
       mask-image: linear-gradient(90deg, transparent 0%, black 20%, black 80%, transparent 100%);
@@ -243,12 +241,11 @@
     let staticSource = null;
     let staticGain = null;
 
-    // Força o iOS a manter o motor de som de interface acordado
     function forceWakeUpAudio() {
         if (uiAudioCtx.state !== 'running') uiAudioCtx.resume();
         const osc = uiAudioCtx.createOscillator();
         const gain = uiAudioCtx.createGain();
-        gain.gain.value = 0; // Inaudível
+        gain.gain.value = 0; 
         osc.connect(gain);
         gain.connect(uiAudioCtx.destination);
         osc.start();
@@ -265,7 +262,7 @@
         const src = uiAudioCtx.createBufferSource();
         src.buffer = clickBuffer;
         const gain = uiAudioCtx.createGain();
-        gain.gain.value = 4.0; // Aumentado para 400% para ser bem evidente
+        gain.gain.value = 3.0; 
         src.connect(gain);
         gain.connect(uiAudioCtx.destination);
         src.start();
@@ -290,10 +287,8 @@
 
     function stopUIStatic(immediate = false) {
         if (!staticSource || !staticGain) return;
-        
         const srcToStop = staticSource;
         const gainToFade = staticGain;
-        
         staticSource = null;
         staticGain = null;
 
@@ -305,8 +300,8 @@
         const now = uiAudioCtx.currentTime;
         gainToFade.gain.cancelScheduledValues(now);
         gainToFade.gain.setValueAtTime(gainToFade.gain.value, now);
-        gainToFade.gain.linearRampToValueAtTime(0.001, now + 1.0); 
-        setTimeout(() => { try { srcToStop.stop(); } catch(e){} }, 1000);
+        gainToFade.gain.linearRampToValueAtTime(0.001, now + 0.4); 
+        setTimeout(() => { try { srcToStop.stop(); } catch(e){} }, 400);
     }
 
     // ----------------- CONFIGURAÇÃO DAS RÁDIOS -----------------
@@ -352,6 +347,7 @@
     let playTimeout = null;
     let carouselIdleTimeout = null;
     let currentlyPlayingKey = null; 
+    let isRadioLoading = false; 
 
     const viewMenu = document.getElementById('viewMenu');
     const viewPlayer = document.getElementById('viewPlayer');
@@ -359,15 +355,20 @@
     const activeColorLogo = document.getElementById('activeColorLogo');
     const radioNameText = document.getElementById('radioNameText');
 
-    function wakeUpCarousel() {
-      carouselContainer.classList.remove('hidden-carousel');
-      radioNameText.classList.remove('fade-out'); 
-      
+    // === LÓGICA DE OCULTAÇÃO DO HUD ===
+    function scheduleCarouselHide() {
       clearTimeout(carouselIdleTimeout);
+      // Conta exatamente 1 segundo para começar a sumir com fade out rápido
       carouselIdleTimeout = setTimeout(() => {
         carouselContainer.classList.add('hidden-carousel');
         radioNameText.classList.add('fade-out'); 
-      }, 5000); 
+      }, 1000); 
+    }
+
+    function wakeUpCarousel() {
+      carouselContainer.classList.remove('hidden-carousel');
+      radioNameText.classList.remove('fade-out'); 
+      clearTimeout(carouselIdleTimeout);
     }
 
     function buildCarousel() {
@@ -404,9 +405,14 @@
       if(N === 0) return;
       
       const activeIdx = ((currentIndex % N) + N) % N;
+      const rad = radiosAtuais[activeIdx];
 
+      // Remove a logo colorida imediatamente ao girar/mudar (Sumiço Analógico)
       activeColorLogo.classList.remove('visible');
-      radioNameText.classList.remove('visible');
+
+      // Nome da rádio aparece IMEDIATAMENTE sincronizado com o carrossel
+      radioNameText.textContent = rad.name;
+      radioNameText.classList.add('visible');
 
       if (!isFirstLoad) playUIClick();
 
@@ -444,18 +450,20 @@
 
       clearTimeout(playTimeout);
       playTimeout = setTimeout(() => {
-        const rad = radiosAtuais[activeIdx];
-        
+        clearTimeout(carouselIdleTimeout); // Segura o HUD aberto enquanto processa a estação
+
         const imgLoader = new Image();
         imgLoader.onload = () => {
             activeColorLogo.src = rad.imgCol;
-            radioNameText.textContent = rad.name;
-            activeColorLogo.classList.add('visible');
-            radioNameText.classList.add('visible');
+            // Se NÃO estiver carregando áudio novo, exibe a logo imediatamente
+            if (!isRadioLoading) {
+                activeColorLogo.classList.add('visible');
+            }
         };
         imgLoader.src = rad.imgCol;
         
         if (currentlyPlayingKey !== rad.key) {
+            isRadioLoading = true;
             playUIStatic();
 
             if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
@@ -464,23 +472,31 @@
               currentlyPlayingKey = rad.key;
               window.__RADIO.startRadio(currentExpansion, rad.key);
               
-              // === ESTÁTICA INTELIGENTE ===
               const stopStaticHandler = () => {
+                  isRadioLoading = false;
                   stopUIStatic(false);
                   window.removeEventListener('radio-ready', stopStaticHandler);
                   clearTimeout(safetyTimeout); 
+                  
+                  // A rádio nova está pronta! Mostra a logo colorida dela agora e fixa na tela
+                  activeColorLogo.classList.add('visible');
+                  
+                  // Inicia o cronômetro de 1 segundo para recolher o carrossel/texto
+                  scheduleCarouselHide();
               };
 
-              // Escuta o sinal do renderer.js
               window.addEventListener('radio-ready', stopStaticHandler);
-
-              // Desliga sozinha se a rádio não avisar em 5 segundos (Backup)
-              const safetyTimeout = setTimeout(() => {
-                  stopStaticHandler();
-              }, 5000);
+              const safetyTimeout = setTimeout(() => { stopStaticHandler(); }, 15000);
 
             } else {
+              isRadioLoading = false;
               stopUIStatic(true);
+              scheduleCarouselHide();
+            }
+        } else {
+            // Se caiu na mesma rádio e ela já terminou de carregar, recolhe o menu
+            if (!isRadioLoading) {
+                scheduleCarouselHide(); 
             }
         }
       }, 1000);
@@ -504,18 +520,22 @@
 
         const firstRad = radiosAtuais[0];
         if(window.__RADIO && window.__RADIO.startRadio) {
+            isRadioLoading = true;
             currentlyPlayingKey = firstRad.key; 
             window.__RADIO.startRadio(currentExpansion, firstRad.key);
+            
+            const firstLoadHandler = () => {
+                isRadioLoading = false;
+                window.removeEventListener('radio-ready', firstLoadHandler);
+                
+                // Exibe a primeira logo de forma definitiva assim que o sinal tocar
+                activeColorLogo.classList.add('visible');
+                
+                // Dispara a ocultação correta sem travar
+                scheduleCarouselHide(); 
+            };
+            window.addEventListener('radio-ready', firstLoadHandler);
         }
-
-        const imgLoader = new Image();
-        imgLoader.onload = () => {
-            activeColorLogo.src = firstRad.imgCol;
-            radioNameText.textContent = firstRad.name;
-            activeColorLogo.classList.add('visible');
-            radioNameText.classList.add('visible');
-        };
-        imgLoader.src = firstRad.imgCol;
 
         updateCarousel(true); 
       });
@@ -529,6 +549,7 @@
       if(window.__RADIO && window.__RADIO.stopRadio) window.__RADIO.stopRadio();
       
       currentlyPlayingKey = null; 
+      isRadioLoading = false;
       stopUIStatic(true); 
 
       viewPlayer.classList.remove('active');
