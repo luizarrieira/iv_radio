@@ -1,4 +1,4 @@
-// renderer.js — Versão Final AAA: Sincronia Estrita + Motor HLS
+// renderer.js — Versão Final AAA: Sincronia Estrita + Motor HLS + Clima Dinâmico Inteligente
 
 /* =================== Init Data Check =================== */
 const WEATHER_LIMITS = window.GERAL_DATA ? window.GERAL_DATA.weatherLimits : { cloud:11, fog:12, rain:11, sun:12, wind:11 };
@@ -178,8 +178,9 @@ async function getAudioBuffer(filePath, limparDaMemoria = false) {
     }
 }
 
-/* =================== Lógica de Clima (Sistema de Baldes) =================== */
-let currentWeatherMain = 'Clear';
+/* =================== Lógica de Clima (API ID com Precisão Absoluta) =================== */
+let currentWeatherState = null;
+let lastWeatherFetch = 0;
 
 const WEATHER_BUCKETS = {
     cloud: { short: [2, 4, 5, 8, 10, 11], long: [1, 3, 6, 7, 9] },
@@ -189,26 +190,66 @@ const WEATHER_BUCKETS = {
     wind: { short: [1, 5, 7, 10, 11], long: [2, 3, 4, 6, 8, 9] }
 };
 
-async function fetchWeather(){
-    try{
+async function updateWeatherState() {
+    const now = Date.now();
+    if (now - lastWeatherFetch < 5 * 60 * 1000) return; // Cache de 5 min
+    lastWeatherFetch = now;
+    
+    try {
         const key = '0cad953b1e9b3793a944d644d5193d3a';
-        const resp = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=Maringa,BR&appid=${key}`);
-        const j = await resp.json();
-        currentWeatherMain = j?.weather?.[0]?.main || 'Clear';
-    }catch(e){ currentWeatherMain = 'Clear'; }
+        // units=metric força o vento a retornar em metros por segundo (m/s)
+        const resp = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=Maringa,BR&appid=${key}&units=metric`);
+        const data = await resp.json();
+        
+        const id = data.weather[0].id;
+        const windSpeed = data.wind?.speed || 0; 
+        const windGust = data.wind?.gust || 0; 
+        const hour = new Date().getHours();
+        
+        // 1. PRIORIDADE MÁXIMA: Ventos > 13.9 m/s (50km/h) ou Rajadas > 19.4 m/s (70km/h)
+        if (windSpeed > 13.9 || windGust > 19.4) {
+            currentWeatherState = 'wind';
+        } 
+        // 2. CHUVA (IDs 200 a 531: Tempestades, Chuviscos, Chuva)
+        else if (id >= 200 && id < 600) {
+            currentWeatherState = 'rain';
+        } 
+        // 3. FOG (IDs 700 a 781: Névoa, Fog, Haze, Poeira)
+        else if (id >= 700 && id < 800) {
+            currentWeatherState = 'fog';
+        } 
+        // 4. NUVENS (IDs 801 a 804: Poucas nuvens a totalmente nublado)
+        else if (id >= 801 && id <= 804) {
+            currentWeatherState = 'cloud';
+        } 
+        // 5. SOL (ID 800: Céu Limpo) -> APENAS das 09h às 15h59
+        else if (id === 800) {
+            if (hour >= 9 && hour < 16) {
+                currentWeatherState = 'sun';
+            } else {
+                currentWeatherState = null; 
+            }
+        } 
+        else {
+            currentWeatherState = null;
+        }
+        
+        log(`🌤️ Clima: [${currentWeatherState || 'NENHUM'}] | ID: ${id} | Vento: ${windSpeed}m/s`);
+    } catch(e) { 
+        log("Erro na API Weather. Assumindo Clima null.");
+        currentWeatherState = null; 
+    }
 }
 
-function pickWeatherFile(condition, slotReservadoMs){
-    if(!condition) return null;
-    const c = condition.toLowerCase();
-    
+function pickWeatherFile(state, slotReservadoMs){
+    if(!state) return null;
     const bucketType = (slotReservadoMs && slotReservadoMs > 13000) ? 'long' : 'short';
 
     let prefix = 'SUN'; let arrays = WEATHER_BUCKETS.sun;
-    if(c.includes('cloud')) { prefix = 'CLOUD'; arrays = WEATHER_BUCKETS.cloud; }
-    else if(c.includes('rain')) { prefix = 'RAIN'; arrays = WEATHER_BUCKETS.rain; }
-    else if(c.includes('fog')||c.includes('mist')) { prefix = 'FOG'; arrays = WEATHER_BUCKETS.fog; }
-    else if(c.includes('wind')) { prefix = 'WIND'; arrays = WEATHER_BUCKETS.wind; }
+    if(state === 'cloud') { prefix = 'CLOUD'; arrays = WEATHER_BUCKETS.cloud; }
+    else if(state === 'rain') { prefix = 'RAIN'; arrays = WEATHER_BUCKETS.rain; }
+    else if(state === 'fog') { prefix = 'FOG'; arrays = WEATHER_BUCKETS.fog; }
+    else if(state === 'wind') { prefix = 'WIND'; arrays = WEATHER_BUCKETS.wind; }
 
     const pool = arrays[bucketType];
     const pickedNum = pool[Math.floor(Math.random() * pool.length)];
@@ -258,20 +299,54 @@ function playCenteredSlot(buf, targetSlotMs, startOffset = 0, scheduledTime = nu
 
 /* =================== O Scanner da Linha do Tempo =================== */
 async function preloadEvent(ev) {
-    if (ev.type === 'dynamic_weather') {
-        await fetchWeather();
-        const wPath = pickWeatherFile(currentWeatherMain, ev.targetMs);
-        if (wPath) {
-            ev._resolvedPath = wPath; 
-            await getAudioBuffer(wPath);
+    // Atualiza o clima apenas se o evento envolver clima para evitar chamadas à toa
+    if (ev.type === 'dynamic_weather' || (ev.type === 'voiceover' && ev.path && ev.path.includes('TO_WEATHER'))) {
+        await updateWeatherState(); 
+    }
+
+    // REGRA 1: Aborta o TO_WEATHER no final da música se o clima não for viável
+    if (ev.type === 'voiceover' && ev.path && ev.path.includes('TO_WEATHER')) {
+        if (currentWeatherState === null) {
+            ev._skipEvent = true; // Marca para ser ignorado no executeEvent
+            log(`🛑 Clima indisponível. Cancelando locução de fim de música: ${ev.path}`);
         }
-    } else if (ev.path && ev.type !== 'stream') {
+    }
+
+    // REGRA 2: Resolve o buraco do bloco de clima na grade
+    if (ev.type === 'dynamic_weather') {
+        if (currentWeatherState !== null) {
+            // Caminho Feliz: Temos clima válido
+            const wPath = pickWeatherFile(currentWeatherState, ev.targetMs);
+            if (wPath) {
+                ev._resolvedPath = wPath; 
+                await getAudioBuffer(wPath);
+            }
+        } else {
+            // FALLBACK INTELIGENTE: Puxa uma narração SOLO para tapar o buraco do clima!
+            const rData = window.STATION_DATA?.PROGRAMACOES?.[activeExpansionKey]?.[activeRadioKey];
+            let fallbackPath = null;
+            if (rData && rData.grupoDJSolo && rData.grupoDJSolo.length > 0) {
+                fallbackPath = rData.grupoDJSolo[Math.floor(Math.random() * rData.grupoDJSolo.length)];
+            }
+            
+            if (fallbackPath) {
+                ev._resolvedPath = fallbackPath;
+                log(`🔄 Substituindo buraco de clima vazio (${ev.targetMs}ms) pela locução: ${fallbackPath}`);
+                await getAudioBuffer(fallbackPath);
+            } else {
+                ev._skipEvent = true; // Se a rádio não tiver pasta SOLO, ele engole o silêncio e ignora
+            }
+        }
+    } else if (ev.path && ev.type !== 'stream' && !ev._skipEvent) {
         await getAudioBuffer(ev.path);
     }
 }
 
 async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = null) {
     if (!started || currentSessionId !== mySession) return;
+    
+    // Ignora completamente eventos marcados como incompatíveis pelo preloadEvent
+    if (ev._skipEvent) return;
 
     if (ev.type === 'stream') {
         currentStreamEvent = ev;
@@ -294,7 +369,7 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
                 streamAudioElement.muted = false;
                 streamAudioElement.loop = false;
                 streamAudioElement.play()
-                    .then(() => { window.dispatchEvent(new CustomEvent('radio-ready')); }) // SINAL HLS
+                    .then(() => { window.dispatchEvent(new CustomEvent('radio-ready')); }) // SINAL INTERFACE HLS
                     .catch(e => log('Autoplay HLS bloqueado:', e.message));
             });
         } else {
@@ -304,7 +379,7 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
             streamAudioElement.loop = false;
             streamAudioElement.currentTime = Math.max(0, offset);
             streamAudioElement.play()
-                .then(() => { window.dispatchEvent(new CustomEvent('radio-ready')); }) // SINAL NATIVO
+                .then(() => { window.dispatchEvent(new CustomEvent('radio-ready')); }) // SINAL INTERFACE NATIVO
                 .catch(e => log('Autoplay stream bloqueado:', e.message));
         }
 
@@ -324,8 +399,9 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
 
     let pathToPlay = ev.path;
     if (ev.type === 'dynamic_weather') {
-        pathToPlay = ev._resolvedPath || pickWeatherFile(currentWeatherMain, ev.targetMs); 
+        pathToPlay = ev._resolvedPath; 
     }
+    
     if (!pathToPlay) return;
 
     const buf = await getAudioBuffer(pathToPlay, true);
@@ -359,7 +435,7 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
 
     if (ev.type === 'dynamic_weather') {
         playCenteredSlot(buf, ev.targetMs, startOffset, scheduledTime);
-        window.dispatchEvent(new CustomEvent('radio-ready')); // SINAL CLIMA
+        window.dispatchEvent(new CustomEvent('radio-ready')); // SINAL INTERFACE CLIMA/SOLO
         return;
     }
 
@@ -380,7 +456,7 @@ async function executeEvent(ev, mySession, forcedSyncTime = null, forcedNowMs = 
     }
 
     s.start(scheduledTime, startOffset);
-    window.dispatchEvent(new CustomEvent('radio-ready')); // SINAL OGG NORMAL
+    window.dispatchEvent(new CustomEvent('radio-ready')); // SINAL INTERFACE OGG
     
     if (startOffset > 0) {
         log(`🔄 HOT-SWAP: ${pathToPlay} (Avançado: ${startOffset.toFixed(2)}s)`);
