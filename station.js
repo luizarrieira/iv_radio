@@ -377,6 +377,7 @@
     isSequentialTalkRadio: true, // Nova flag
     grupoID: Array.from({length:11}, (_,i)=>`radio_wktt/ID_${padWKTT(i+1)}.ogg`),
     grupoAdv: G.adv.iv,
+    grupoWeazelNews: G.news.iv,
     // Sequência exata pedida para o IV
     programasList: [
       { name: '1_UNJUST_1', arquivo: 'radio_wktt/1_UNJUST_1/playlist.m3u8' },
@@ -393,6 +394,7 @@
     isSequentialTalkRadio: true, 
     grupoID: Array.from({length:11}, (_,i)=>`radio_wktt/ID_${padWKTT(i+1)}.ogg`),
     grupoAdv: G.adv.eflc,
+    grupoWeazelNews: G.news.eflc,
     // Looping exclusivo da expansão
     programasList: [
       { name: '7_MARTINSERIOUSSHOW', arquivo: 'radio_wktt/7_MARTINSERIOUSSHOW/playlist.m3u8' },
@@ -406,6 +408,7 @@
     isSequentialTalkRadio: true, 
     grupoID: Array.from({length:11}, (_,i)=>`radio_wktt/ID_${padWKTT(i+1)}.ogg`),
     grupoAdv: G.adv.complete, // Junta os comerciais da IV e da TLAD
+    grupoWeazelNews: G.news.complete,
     // A lista completa, garantindo a Parte 2 logo após a Parte 1
     programasList: [
       { name: '1_UNJUST_1', arquivo: 'radio_wktt/1_UNJUST_1/playlist.m3u8' },
@@ -1119,6 +1122,7 @@
     isSequentialTalkRadio: true,
     grupoID: lazlowIDs,
     grupoAdv: G.adv.iv.slice(),
+    grupoWeazelNews: G.news.iv,
     programasList: lazlow_prog_iv // Só toca se passar pelo filtro do index.html (Dia 8+)
   };
 
@@ -1126,6 +1130,7 @@
     isSequentialTalkRadio: true,
     grupoID: lazlowIDs,
     grupoAdv: G.adv.eflc.slice(),
+    grupoWeazelNews: G.news.eflc,
     programasList: lazlow_prog_eflc // Toca o mês todo
   };
 
@@ -1133,6 +1138,7 @@
     isSequentialTalkRadio: true,
     grupoID: lazlowIDs,
     grupoAdv: G.adv.complete.slice(),
+    grupoWeazelNews: G.news.complete,
     // Getter dinâmico: a lista muda dependendo do dia atual!
     get programasList() {
       const day = new Date().getDate(); // Substitua por sua variável de dia
@@ -1166,6 +1172,7 @@
     isShuffleTalkRadio: true, // A nossa nova regra de embaralhamento sem repetição!
     grupoID: plrIDs,
     grupoAdv: G.adv.iv.slice(),
+    grupoWeazelNews: G.news.iv,
     programasList: [
       { name: 'INTELLAGENDA', arquivo: 'radio_plr/INTELLAGENDA/playlist.m3u8' },
       { name: 'PACEMAKER', arquivo: 'radio_plr/PACEMAKER/playlist.m3u8' },
