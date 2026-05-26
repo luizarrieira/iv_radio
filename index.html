@@ -61,6 +61,7 @@
       cursor: grab;
       position: relative;
       touch-action: pan-y; 
+      width: 100%;
     }
     #viewPlayer:active { cursor: grabbing; }
 
@@ -82,7 +83,8 @@
     }
     #btnBack:hover { background: #333; color: #fff; border-color: #fff; }
 
-    /* === LAYOUT CENTRAL (CAPA + NOME + CARROSSEL) === */
+
+    /* === LAYOUT CENTRAL (GRUPO DE ALINHAMENTO) === */
     #playerCenterGroup {
       display: flex;
       flex-direction: column;
@@ -91,6 +93,7 @@
       z-index: 20;
     }
 
+    /* === CAPA E TÍTULO === */
     #coverAndTitle {
       display: flex;
       flex-direction: column; 
@@ -102,18 +105,24 @@
     }
 
     #activeColorLogo {
-      width: 320px; /* Aumentado de 256px para 320px */
-      height: 160px; /* Aumentado de 128px para 160px */
+      width: 280px; 
+      height: 120px; 
       object-fit: contain;
+      object-position: left bottom; 
       opacity: 0;
       transform: scale(0.95);
-      pointer-events: none; 
+      transform-origin: left bottom; 
       -webkit-user-drag: none;
-      transition: opacity 0.3s ease, transform 0.3s ease; 
+      
+      /* Transição padrão como "none" para fade-out seco */
+      transition: none; 
     }
+    
+    /* Aplica a animação suave APENAS no fade-in */
     #activeColorLogo.visible {
       opacity: 1;
       transform: scale(1);
+      transition: opacity 0.3s ease, transform 0.3s ease; 
     }
 
     #radioNameText {
@@ -123,6 +132,10 @@
       letter-spacing: 2px;
       text-shadow: 0 0 10px rgba(255,170,0,0.4);
       padding-bottom: 0; 
+      
+      /* Recuo para o texto ficar perfeitamente alinhado com o visual da logo colorida */
+      padding-left: 15px; 
+
       opacity: 0;
       transform: translateX(-10px);
       transition: opacity 0.3s ease, transform 0.3s ease; 
@@ -135,18 +148,17 @@
       opacity: 0 !important;
     }
 
-    /* === CARROSSEL DAS RÁDIOS (Preto e Branco) === */
+    /* === CARROSSEL DAS RÁDIOS === */
     #carouselContainer {
       position: relative;
       width: 100%;
       height: 100px; 
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: block;
       transition: opacity 0.3s ease; 
       opacity: 1;
-      -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 20%, black 80%, transparent 100%);
-      mask-image: linear-gradient(90deg, transparent 0%, black 20%, black 80%, transparent 100%);
+      overflow: visible; 
+      -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.4) 15%, black 30%, black 70%, rgba(0,0,0,0.4) 85%, transparent 100%);
+      mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.4) 15%, black 30%, black 70%, rgba(0,0,0,0.4) 85%, transparent 100%);
     }
     
     #carouselContainer.hidden-carousel {
@@ -206,12 +218,14 @@
     </div>
 
     <div id="playerCenterGroup">
+      
       <div id="coverAndTitle">
         <img id="activeColorLogo" src="capas/default.png" draggable="false" />
         <div id="radioNameText"></div>
       </div>
-      
+
       <div id="carouselContainer"></div>
+
     </div>
 
     <div id="logArea"></div>
@@ -234,7 +248,7 @@
       logArea.scrollTop = logArea.scrollHeight;
     };
 
-    // ----------------- SONS DA INTERFACE (Web Audio API Isolada) -----------------
+    // ----------------- SONS DA INTERFACE -----------------
     const uiAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     let clickBuffer = null;
     let staticBuffer = null;
@@ -306,33 +320,34 @@
 
     // ----------------- CONFIGURAÇÃO DAS RÁDIOS -----------------
     const todasAsRadios = [
-      { key: 'radio_afro_beat', name: 'International Funk 99', imgBW: 'capas/if99_bw.png', imgCol: 'capas/if99_col.png', expansoes: ['iv', 'complete'] },
-      { key: 'radio_babylon', name: 'Tuff Gong Radio', imgBW: 'capas/tuffgong_bw.png', imgCol: 'capas/tuffgong_col.png', expansoes: ['iv', 'complete'] },
-      { key: 'radio_the_vibe', name: 'The Vibe 98.8', imgBW: 'capas/thevibe_bw.png', imgCol: 'capas/thevibe_col.png', expansoes: ['iv', 'complete'] },
-      { key: 'radio_liberty_rock', name: 'Liberty Rock Radio 97.8', imgBW: 'capas/lrr_bw.png', imgCol: 'capas/lrr_col.png', expansoes: ['iv', 'eflc', 'complete'] },
-      { key: 'radio_jazz_nation', name: 'Jazz Nation Radio 108.5', imgBW: 'capas/jnr_bw.png', imgCol: 'capas/jnr_col.png', expansoes: ['iv', 'complete'] },
-      { key: 'radio_bobby_konders', name: 'Massive B Soundsystem 96.9', imgBW: 'capas/massiveb_bw.png', imgCol: 'capas/massiveb_col.png', expansoes: ['iv', 'complete'] },
-      { key: 'radio_meditation', name: 'Self Actualization FM', imgBW: 'capas/selfactualizationfm_bw.png', imgCol: 'capas/selfactualizationfm_col.png', expansoes: ['eflc', 'complete'] },
-      { key: 'radio_k109_the_studio', name: 'K109 The Studio', imgBW: 'capas/k109_bw.png', imgCol: 'capas/k109_col.png', expansoes: ['iv', 'eflc', 'complete'] },
-      { key: 'radio_vcfm', name: 'Vice City FM', imgBW: 'capas/vicecityfm_bw.png', imgCol: 'capas/vicecityfm_col.png', expansoes: ['eflc', 'complete'] },
-      { key: 'radio_wktt', name: 'We Know The Truth', imgBW: 'capas/wktt_bw.png', imgCol: 'capas/wktt_col.png', expansoes: ['iv', 'eflc', 'complete'] },
-      { key: 'radio_hardcore', name: 'Liberty City Hardcore', imgBW: 'capas/lchc_bw.png', imgCol: 'capas/lchc_col.png', expansoes: ['iv', 'eflc', 'complete'] },
-      { key: 'radio_classical_ambient', name: 'The Journey', imgBW: 'capas/thejourney_bw.png', imgCol: 'capas/thejourney_col.png', expansoes: ['iv', 'complete'] },
-      { key: 'radio_fusion_fm', name: 'Fusion FM', imgBW: 'capas/fusion_bw.png', imgCol: 'capas/fusion_col.png', expansoes: ['iv', 'complete'] },
-      { key: 'radio_beat_95', name: 'The Beat 102.7', imgBW: 'capas/beat_bw.png', imgCol: 'capas/beat_col.png', expansoes: ['iv', 'eflc', 'complete'] },
-      { key: 'radio_ramjamfm', name: 'Ram Jam FM', imgBW: 'capas/ramjamfm_bw.png', imgCol: 'capas/ramjamfm_col.png', expansoes: ['eflc', 'complete'] },
-      { key: 'radio_dance_rock', name: 'Radio Broker', imgBW: 'capas/radiobroker_bw.png', imgCol: 'capas/radiobroker_col.png', expansoes: ['iv', 'eflc', 'complete'] },
-      { key: 'radio_vladivostok', name: 'Vladivostok FM', imgBW: 'capas/vladivostok_bw.png', imgCol: 'capas/vladivostok_col.png', expansoes: ['iv', 'eflc', 'complete'] },
-      { key: 'radio_plr', name: 'Public Liberty Radio', imgBW: 'capas/plr_bw.png', imgCol: 'capas/plr_col.png', expansoes: ['iv', 'complete'] },
-      { key: 'radio_san_juan_sounds', name: 'San Juan Sounds', imgBW: 'capas/sanjuan_bw.png', imgCol: 'capas/sanjuan_col.png', expansoes: ['iv', 'eflc', 'complete'] },
-      { key: 'radio_dance_mix', name: 'Electro Choc', imgBW: 'capas/electrochoc_bw.png', imgCol: 'capas/electrochoc_col.png', expansoes: ['iv', 'eflc', 'complete'] },
-      { key: 'radio_ny_classics', name: 'The Classics 104.1', imgBW: 'capas/theclassics_bw.png', imgCol: 'capas/theclassics_col.png', expansoes: ['iv', 'complete'] },
+      { key: 'radio_afro_beat', name: 'International Funk 99', imgBW: 'capas/if99_bw.png', imgCol: 'capas/if99_col.png', expansoes: ['iv', 'complete'], artWidth: 115 },
+      { key: 'radio_babylon', name: 'Tuff Gong Radio', imgBW: 'capas/tuffgong_bw.png', imgCol: 'capas/tuffgong_col.png', expansoes: ['iv', 'complete'], artWidth: 110 },
+      { key: 'radio_the_vibe', name: 'The Vibe 98.8', imgBW: 'capas/thevibe_bw.png', imgCol: 'capas/thevibe_col.png', expansoes: ['iv', 'complete'], artWidth: 105 },
+      { key: 'radio_liberty_rock', name: 'Liberty Rock Radio 97.8', imgBW: 'capas/lrr_bw.png', imgCol: 'capas/lrr_col.png', expansoes: ['iv', 'eflc', 'complete'], artWidth: 75 },
+      { key: 'radio_jazz_nation', name: 'Jazz Nation Radio 108.5', imgBW: 'capas/jnr_bw.png', imgCol: 'capas/jnr_col.png', expansoes: ['iv', 'complete'], artWidth: 90 }, 
+      { key: 'radio_bobby_konders', name: 'Massive B Soundsystem 96.9', imgBW: 'capas/massiveb_bw.png', imgCol: 'capas/massiveb_col.png', expansoes: ['iv', 'complete'], artWidth: 90 }, 
+      { key: 'radio_meditation', name: 'Self Actualization FM', imgBW: 'capas/selfactualizationfm_bw.png', imgCol: 'capas/selfactualizationfm_col.png', expansoes: ['eflc', 'complete'], artWidth: 75 },
+      { key: 'radio_k109_the_studio', name: 'K109 The Studio', imgBW: 'capas/k109_bw.png', imgCol: 'capas/k109_col.png', expansoes: ['iv', 'eflc', 'complete'], artWidth: 85 },
+      { key: 'radio_vcfm', name: 'Vice City FM', imgBW: 'capas/vicecityfm_bw.png', imgCol: 'capas/vicecityfm_col.png', expansoes: ['eflc', 'complete'], artWidth: 75 },
+      { key: 'radio_wktt', name: 'We Know The Truth', imgBW: 'capas/wktt_bw.png', imgCol: 'capas/wktt_col.png', expansoes: ['iv', 'eflc', 'complete'], artWidth: 90 },
+      { key: 'radio_hardcore', name: 'Liberty City Hardcore', imgBW: 'capas/lchc_bw.png', imgCol: 'capas/lchc_col.png', expansoes: ['iv', 'eflc', 'complete'], artWidth: 110 },
+      { key: 'radio_classical_ambient', name: 'The Journey', imgBW: 'capas/thejourney_bw.png', imgCol: 'capas/thejourney_col.png', expansoes: ['iv', 'complete'], artWidth: 110 },
+      { key: 'radio_fusion_fm', name: 'Fusion FM', imgBW: 'capas/fusion_bw.png', imgCol: 'capas/fusion_col.png', expansoes: ['iv', 'complete'], artWidth: 105 },
+      { key: 'radio_beat_95', name: 'The Beat 102.7', imgBW: 'capas/beat_bw.png', imgCol: 'capas/beat_col.png', expansoes: ['iv', 'eflc', 'complete'], artWidth: 90 }, 
+      { key: 'radio_ramjamfm', name: 'Ram Jam FM', imgBW: 'capas/ramjamfm_bw.png', imgCol: 'capas/ramjamfm_col.png', expansoes: ['eflc', 'complete'], artWidth: 110 },
+      { key: 'radio_dance_rock', name: 'Radio Broker', imgBW: 'capas/radiobroker_bw.png', imgCol: 'capas/radiobroker_col.png', expansoes: ['iv', 'eflc', 'complete'], artWidth: 110 },
+      { key: 'radio_vladivostok', name: 'Vladivostok FM', imgBW: 'capas/vladivostok_bw.png', imgCol: 'capas/vladivostok_col.png', expansoes: ['iv', 'eflc', 'complete'], artWidth: 80 },
+      { key: 'radio_plr', name: 'Public Liberty Radio', imgBW: 'capas/plr_bw.png', imgCol: 'capas/plr_col.png', expansoes: ['iv', 'complete'], artWidth: 90 },
+      { key: 'radio_san_juan_sounds', name: 'San Juan Sounds', imgBW: 'capas/sanjuan_bw.png', imgCol: 'capas/sanjuan_col.png', expansoes: ['iv', 'eflc', 'complete'], artWidth: 85 },
+      { key: 'radio_dance_mix', name: 'Electro Choc', imgBW: 'capas/electrochoc_bw.png', imgCol: 'capas/electrochoc_col.png', expansoes: ['iv', 'eflc', 'complete'], artWidth: 115 },
+      { key: 'radio_ny_classics', name: 'The Classics 104.1', imgBW: 'capas/theclassics_bw.png', imgCol: 'capas/theclassics_col.png', expansoes: ['iv', 'complete'], artWidth: 110 },
       { 
         key: 'radio_lazlow', 
         name: 'Integrity 2.0', 
         imgBW: 'capas/integrity_bw.png', 
         imgCol: 'capas/integrity_col.png', 
-        expansoes: ['iv', 'eflc', 'complete'],
+        expansoes: ['iv', 'eflc', 'complete'], 
+        artWidth: 115,
         isAvailable: function(exp, day) {
             if (exp === 'eflc') return true; 
             return day >= 8; 
@@ -355,10 +370,8 @@
     const activeColorLogo = document.getElementById('activeColorLogo');
     const radioNameText = document.getElementById('radioNameText');
 
-    // === LÓGICA DE OCULTAÇÃO DO HUD ===
     function scheduleCarouselHide() {
       clearTimeout(carouselIdleTimeout);
-      // Conta exatamente 1 segundo para começar a sumir com fade out rápido
       carouselIdleTimeout = setTimeout(() => {
         carouselContainer.classList.add('hidden-carousel');
         radioNameText.classList.add('fade-out'); 
@@ -379,7 +392,8 @@
           return validExpansion && validDate;
       });
       
-      carouselContainer.innerHTML = '';
+      carouselContainer.innerHTML = ''; 
+
       radiosAtuais.forEach((r, index) => {
         const div = document.createElement('div');
         div.className = 'radio-card';
@@ -407,55 +421,71 @@
       const activeIdx = ((currentIndex % N) + N) % N;
       const rad = radiosAtuais[activeIdx];
 
-      // Remove a logo colorida imediatamente ao girar/mudar (Sumiço Analógico)
       activeColorLogo.classList.remove('visible');
-
-      // Nome da rádio aparece IMEDIATAMENTE sincronizado com o carrossel
       radioNameText.textContent = rad.name;
       radioNameText.classList.add('visible');
 
       if (!isFirstLoad) playUIClick();
 
+      // === MOTOR DE ESPAÇAMENTO GEOMÉTRICO (CORRIGIDO) ===
+      const getW = (offset) => radiosAtuais[((activeIdx + offset) % N + N) % N].artWidth;
+      
+      const GAP = 18; 
+
+      // LADO ESQUERDO
+      const pos1_left = (getW(0) / 2) + GAP + (getW(-1) / 2);
+      const pos2_left = pos1_left + (getW(-1) / 2) + GAP + (getW(-2) / 2);
+      const pos3_left = pos2_left + 150;
+
+      // LADO DIREITO
+      const pos1_right = (getW(0) / 2) + GAP + (getW(1) / 2);
+      const pos2_right = pos1_right + (getW(1) / 2) + GAP + (getW(2) / 2);
+      const pos3_right = pos2_right + 150;
+
       document.querySelectorAll('.radio-card').forEach((el, i) => {
         let diff = i - activeIdx;
+        
         if (diff > Math.floor(N/2)) diff -= N;
         if (diff < -Math.floor(N/2)) diff += N;
 
-        const oldDiff = el.dataset.diff !== undefined ? parseInt(el.dataset.diff) : diff;
-        el.dataset.diff = diff;
-        
-        if (Math.abs(oldDiff - diff) > 1) el.style.transition = 'none'; 
-        else el.style.transition = 'transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease';
+        let targetX = 0;
+        if (diff === 1) targetX = pos1_right;
+        else if (diff === -1) targetX = -pos1_left;
+        else if (diff === 2) targetX = pos2_right;
+        else if (diff === -2) targetX = -pos2_left;
+        else if (diff > 2) targetX = pos3_right;
+        else if (diff < -2) targetX = -pos3_left;
 
-        setTimeout(() => {
-            if (diff === 0) {
-              el.style.transform = 'translate(0px, 0px) scale(1)';
-              el.style.opacity = '1';
-              el.style.zIndex = '5';
-            } else if (diff === -1 || (diff < 0 && N === 2)) {
-              el.style.transform = 'translate(-140px, 0px) scale(0.8)';
-              el.style.opacity = '0.5';
-              el.style.zIndex = '3';
-            } else if (diff === 1 || (diff > 0 && N === 2)) {
-              el.style.transform = 'translate(140px, 0px) scale(0.8)';
-              el.style.opacity = '0.5';
-              el.style.zIndex = '3';
-            } else {
-              el.style.transform = `translate(${diff > 0 ? 300 : -300}px, 0px) scale(0.5)`;
-              el.style.opacity = '0';
-              el.style.zIndex = '1';
-            }
-        }, 0);
+        const oldX = el.dataset.prevX !== undefined ? parseFloat(el.dataset.prevX) : targetX;
+        el.dataset.prevX = targetX;
+
+        if ((oldX < -100 && targetX > 100) || (oldX > 100 && targetX < -100)) {
+            el.style.transition = 'none';
+            el.style.transform = `translateX(${targetX}px)`;
+            void el.offsetWidth; 
+        }
+
+        el.style.transition = 'transform 0.15s ease-out, opacity 0.15s ease-out';
+
+        let opacity = '0';
+        let zIdx = '1';
+        
+        if (diff === 0) { opacity = '1'; zIdx = '5'; }
+        else if (Math.abs(diff) === 1) { opacity = '0.5'; zIdx = '4'; } 
+        else if (Math.abs(diff) === 2) { opacity = '0.15'; zIdx = '3'; } 
+
+        el.style.transform = `translateX(${targetX}px)`;
+        el.style.opacity = opacity;
+        el.style.zIndex = zIdx;
       });
 
       clearTimeout(playTimeout);
       playTimeout = setTimeout(() => {
-        clearTimeout(carouselIdleTimeout); // Segura o HUD aberto enquanto processa a estação
+        clearTimeout(carouselIdleTimeout); 
 
         const imgLoader = new Image();
         imgLoader.onload = () => {
             activeColorLogo.src = rad.imgCol;
-            // Se NÃO estiver carregando áudio novo, exibe a logo imediatamente
             if (!isRadioLoading) {
                 activeColorLogo.classList.add('visible');
             }
@@ -478,10 +508,7 @@
                   window.removeEventListener('radio-ready', stopStaticHandler);
                   clearTimeout(safetyTimeout); 
                   
-                  // A rádio nova está pronta! Mostra a logo colorida dela agora e fixa na tela
                   activeColorLogo.classList.add('visible');
-                  
-                  // Inicia o cronômetro de 1 segundo para recolher o carrossel/texto
                   scheduleCarouselHide();
               };
 
@@ -494,10 +521,7 @@
               scheduleCarouselHide();
             }
         } else {
-            // Se caiu na mesma rádio e ela já terminou de carregar, recolhe o menu
-            if (!isRadioLoading) {
-                scheduleCarouselHide(); 
-            }
+            if (!isRadioLoading) scheduleCarouselHide(); 
         }
       }, 1000);
     }
@@ -528,10 +552,7 @@
                 isRadioLoading = false;
                 window.removeEventListener('radio-ready', firstLoadHandler);
                 
-                // Exibe a primeira logo de forma definitiva assim que o sinal tocar
                 activeColorLogo.classList.add('visible');
-                
-                // Dispara a ocultação correta sem travar
                 scheduleCarouselHide(); 
             };
             window.addEventListener('radio-ready', firstLoadHandler);
@@ -551,6 +572,17 @@
       currentlyPlayingKey = null; 
       isRadioLoading = false;
       stopUIStatic(true); 
+
+      activeColorLogo.style.transition = 'none'; 
+      activeColorLogo.classList.remove('visible');
+      activeColorLogo.src = 'capas/default.png'; 
+      radioNameText.style.transition = 'none';
+      radioNameText.classList.remove('visible');
+      
+      void activeColorLogo.offsetWidth; 
+      
+      activeColorLogo.style.transition = ''; 
+      radioNameText.style.transition = '';
 
       viewPlayer.classList.remove('active');
       viewMenu.classList.add('active');
@@ -591,9 +623,13 @@
       if (Math.abs(diffX) > Math.abs(diffY)) {
           if (diffX > 50) goNext();
           else if (diffX < -50) goPrev();
-          else wakeUpCarousel(); 
+          else {
+              wakeUpCarousel(); 
+              scheduleCarouselHide();
+          }
       } else {
           wakeUpCarousel();
+          scheduleCarouselHide();
       }
     };
 
