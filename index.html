@@ -88,7 +88,7 @@
     #playerCenterGroup {
       display: flex;
       flex-direction: column;
-      align-items: center; /* O eixo âncora é o centro exato da tela */
+      align-items: center; /* Âncora centralizada em qualquer tela */
       width: 100%;
       z-index: 20;
     }
@@ -103,20 +103,19 @@
       z-index: 25;
       pointer-events: none; 
       
-      /* Desloca a logo exatamente para a coordenada da primeira rádio P&B (~120px do centro) */
-      transform: translateX(-120px);
+      /* ALINHAMENTO MATEMÁTICO: -146px é exatamente a posição da rádio P&B da esquerda! */
+      transform: translateX(-146px);
     }
 
     #activeColorLogo {
-      width: 320px; /* Restaurado o tamanho maior! */
+      width: 320px; /* Tamanho Aumentado Original Mantido */
       height: 160px; 
       object-fit: contain;
-      object-position: left bottom; 
+      object-position: left bottom; /* Respeita o canto esquerdo interno do PNG nativo do jogo */
       opacity: 0;
       transform: scale(0.95);
       transform-origin: left bottom; 
       -webkit-user-drag: none;
-      
       transition: none; 
     }
     
@@ -134,7 +133,7 @@
       text-shadow: 0 0 10px rgba(255,170,0,0.4);
       padding-bottom: 0; 
       
-      /* Ajuste fino recuado para a esquerda, casando com a logo */
+      /* Leve recuo para não colar na margem invisível da imagem */
       padding-left: 8px; 
 
       opacity: 0;
@@ -159,9 +158,8 @@
       transition: opacity 0.3s ease; 
       opacity: 1;
       overflow: visible; 
-      /* Máscara em PIXELS fixos, para não engolir imagens do pos2 em telas pequenas */
-      -webkit-mask-image: linear-gradient(90deg, transparent 0px, rgba(0,0,0,0.5) 15px, black 40px, black calc(100% - 40px), rgba(0,0,0,0.5) calc(100% - 15px), transparent 100%);
-      mask-image: linear-gradient(90deg, transparent 0px, rgba(0,0,0,0.5) 15px, black 40px, black calc(100% - 40px), rgba(0,0,0,0.5) calc(100% - 15px), transparent 100%);
+      -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.4) 15%, black 30%, black 70%, rgba(0,0,0,0.4) 85%, transparent 100%);
+      mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.4) 15%, black 30%, black 70%, rgba(0,0,0,0.4) 85%, transparent 100%);
     }
     
     #carouselContainer.hidden-carousel {
@@ -183,26 +181,18 @@
     }
     
     .radio-card img {
-      width: 128px;
+      width: 128px; /* Tamanho original P&B inalterado */
       height: 64px;
       object-fit: contain;
       -webkit-user-drag: none;
     }
 
-    /* === REGRAS PARA O CELULAR (MOBILE) === */
+    /* === EXCLUSIVO PARA CELULAR (MOBILE) === */
     @media (max-width: 600px) {
+      /* No celular as imagens mantêm seus 320px e 128px, apenas ajustamos a máscara para transições bonitas nas bordas */
       #carouselContainer {
-        /* Encolhe levemente o anel para as rádios pos2 entrarem no campo de visão */
-        transform: scale(0.75); 
-      }
-      #coverAndTitle {
-        /* Acompanha o novo alinhamento da primeira rádio, que encolheu junto com o carrossel (120 * 0.75) */
-        transform: translateX(-90px); 
-      }
-      #activeColorLogo {
-        /* Garante que a logo gigante não cause barra de rolagem lateral no celular */
-        width: 260px; 
-        height: 130px;
+        -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,1) 15%, black 85%, transparent 100%);
+        mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,1) 15%, black 85%, transparent 100%);
       }
     }
 
@@ -447,20 +437,19 @@
 
       if (!isFirstLoad) playUIClick();
 
-      // === MOTOR DE ESPAÇAMENTO GEOMÉTRICO ===
       const getW = (offset) => radiosAtuais[((activeIdx + offset) % N + N) % N].artWidth;
-      
       const GAP = 18; 
 
-      // LADO ESQUERDO
       const pos1_left = (getW(0) / 2) + GAP + (getW(-1) / 2);
       const pos2_left = pos1_left + (getW(-1) / 2) + GAP + (getW(-2) / 2);
       const pos3_left = pos2_left + 150;
 
-      // LADO DIREITO
       const pos1_right = (getW(0) / 2) + GAP + (getW(1) / 2);
       const pos2_right = pos1_right + (getW(1) / 2) + GAP + (getW(2) / 2);
       const pos3_right = pos2_right + 150;
+
+      // Detecta se a tela tem 600px ou menos
+      const isMobile = window.innerWidth <= 600;
 
       document.querySelectorAll('.radio-card').forEach((el, i) => {
         let diff = i - activeIdx;
@@ -492,7 +481,8 @@
         
         if (diff === 0) { opacity = '1'; zIdx = '5'; }
         else if (Math.abs(diff) === 1) { opacity = '0.5'; zIdx = '4'; } 
-        else if (Math.abs(diff) === 2) { opacity = '0.15'; zIdx = '3'; } 
+        // Aqui bloqueamos o visual de 5 imagens caso esteja no celular (Opacidade vira 0)
+        else if (Math.abs(diff) === 2) { opacity = isMobile ? '0' : '0.15'; zIdx = '3'; } 
 
         el.style.transform = `translateX(${targetX}px)`;
         el.style.opacity = opacity;
@@ -545,6 +535,13 @@
         }
       }, 1000);
     }
+
+    // Recalcula o carrossel em tempo real se o celular deitar a tela
+    window.addEventListener('resize', () => {
+      if (viewPlayer.classList.contains('active')) {
+        updateCarousel(true);
+      }
+    });
 
     function goNext() { currentIndex++; updateCarousel(); }
     function goPrev() { currentIndex--; updateCarousel(); }
